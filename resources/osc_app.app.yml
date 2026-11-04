@@ -1,0 +1,25 @@
+resources:
+  apps:
+    osc_app:
+      name: ${var.app_name}
+      description: "OSC Registrant Oversight - Lakebase demos (Lakehouse vs Lakebase, branching, CI/CD schema migration, RLS, PITR)"
+      source_code_path: ../app
+      config:
+        command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+        # Applied by `databricks bundle run osc_app`; setup task 03 deploys the app with the same values.
+        # The app looks up the warehouse id and Lakebase endpoint host from these names at startup.
+        env:
+          - name: UC_CATALOG
+            value: ${var.catalog}
+          - name: UC_SCHEMA
+            value: ${var.schema}
+          - name: WAREHOUSE_NAME
+            value: ${var.warehouse_name}
+          - name: LAKEBASE_PROJECT
+            value: ${var.lakebase_project}
+          - name: LAKEBASE_DB
+            value: ${var.lakebase_db}
+          - name: OLAP_PERIODS
+            value: ${var.olap_periods}
+          - name: DAB_MAX_DEPLOYMENTS
+            value: ${var.dab_max_deployments}

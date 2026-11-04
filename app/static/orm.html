@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ORM (SQLAlchemy) Demo - Lakebase Autoscaling</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .spinner { border: 4px solid #e5e7eb; border-top: 4px solid #6366f1; border-radius: 50%; width: 36px; height: 36px; animation: spin 0.8s linear infinite; display: inline-block; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .code-block { font-family: 'Menlo', 'Monaco', 'Courier New', monospace; font-size: 12px; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-7xl mx-auto px-4 py-6">
+    <!-- Header -->
+    <div class="mb-6">
+      <div class="flex items-center gap-3">
+        <a href="/" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+        </a>
+        <h1 class="text-3xl font-bold text-gray-900">ORM (SQLAlchemy) Demo</h1>
+      </div>
+      <p class="text-gray-500 mt-1 ml-8">SQLAlchemy 2.x with Lakebase Postgres — auto-reflection, filtered browsing, relationship navigation, and ORM vs raw SQL comparison</p>
+    </div>
+
+    <!-- How it works -->
+    <div class="mb-6 bg-white rounded-lg shadow p-4">
+      <div class="flex items-center gap-2 mb-2">
+        <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <span class="text-sm font-medium text-gray-700">How it works</span>
+      </div>
+      <div class="text-sm text-gray-500 space-y-1">
+        <p>Lakebase is <strong>standard PostgreSQL</strong>, so any ORM works out of the box. This demo uses <code class="bg-gray-100 px-1 rounded">SQLAlchemy 2.x</code> with the <code class="bg-gray-100 px-1 rounded">postgresql+psycopg</code> driver and <strong>OAuth token authentication</strong>.</p>
+        <p>Tables are auto-reflected from the database — no model definitions needed. Foreign keys, types, and constraints are all discovered dynamically.</p>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex gap-1 mb-4 bg-white rounded-lg shadow p-1">
+      <button id="tab-schema" onclick="switchTab('schema')" class="flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors bg-indigo-600 text-white">Schema Reflection</button>
+      <button id="tab-browse" onclick="switchTab('browse')" class="flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors text-gray-600 hover:bg-gray-100">Table Browser</button>
+      <button id="tab-queries" onclick="switchTab('queries')" class="flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors text-gray-600 hover:bg-gray-100">Query Comparison</button>
+      <button id="tab-relations" onclick="switchTab('relations')" class="flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors text-gray-600 hover:bg-gray-100">Relationship Navigator</button>
+    </div>
+
+    <!-- Tab: Schema Reflection -->
+    <div id="panel-schema" class="space-y-4">
+      <div class="bg-white rounded-lg shadow p-4">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="font-semibold text-gray-800">Auto-Reflected Tables</h2>
+          <span id="schema-timing" class="text-xs text-gray-400"></span>
+        </div>
+        <p class="text-xs text-gray-400 mb-4">
+          <code class="bg-gray-100 px-1 rounded">MetaData.reflect(bind=engine)</code> — SQLAlchemy inspects Postgres system catalogs to discover tables, columns, types, PKs, and foreign keys.
+        </p>
+        <div id="schema-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+      </div>
+    </div>
+
+    <!-- Tab: Table Browser -->
+    <div id="panel-browse" class="hidden space-y-4">
+      <div class="bg-white rounded-lg shadow p-4">
+        <div class="flex items-center gap-4 mb-4">
+          <select id="browse-table" onchange="browseTable()" class="border rounded-md px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+            <option value="">Select a table...</option>
+          </select>
+          <input id="browse-filter-col" type="text" placeholder="Filter column" class="border rounded-md px-3 py-1.5 text-sm w-32 focus:ring-2 focus:ring-indigo-500">
+          <input id="browse-filter-val" type="text" placeholder="Filter value" class="border rounded-md px-3 py-1.5 text-sm w-40 focus:ring-2 focus:ring-indigo-500" onkeydown="if(event.key==='Enter')browseTable()">
+          <button onclick="browseTable()" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-sm font-medium transition-colors">Search</button>
+          <button onclick="clearFilter()" class="px-3 py-1.5 border border-gray-300 text-gray-600 hover:bg-gray-50 rounded-md text-sm transition-colors">Clear</button>
+          <span id="browse-timing" class="text-xs text-gray-400 ml-auto"></span>
+        </div>
+        <!-- ORM Code Display -->
+        <div id="browse-orm-code" class="hidden mb-4 bg-gray-900 rounded-lg p-3">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-[10px] font-medium text-gray-400 uppercase tracking-wide">SQLAlchemy ORM</span>
+          </div>
+          <code id="browse-code-text" class="code-block text-green-400 whitespace-pre-wrap break-all"></code>
+        </div>
+        <div id="browse-data" class="overflow-x-auto"></div>
+        <div id="browse-pagination" class="hidden flex items-center justify-center gap-4 mt-4 pt-3 border-t">
+          <button id="browse-prev" onclick="browsePage(-1)" class="px-3 py-1 rounded border text-sm hover:bg-gray-50 disabled:opacity-50">Previous</button>
+          <span id="browse-page-info" class="text-sm text-gray-600"></span>
+          <button id="browse-next" onclick="browsePage(1)" class="px-3 py-1 rounded border text-sm hover:bg-gray-50 disabled:opacity-50">Next</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Query Comparison -->
+    <div id="panel-queries" class="hidden space-y-4">
+      <div class="bg-white rounded-lg shadow p-4">
+        <h2 class="font-semibold text-gray-800 mb-4">ORM vs Raw SQL — Same Query, Two Approaches</h2>
+        <div id="query-buttons" class="flex flex-wrap gap-2 mb-4"></div>
+        <div id="query-result" class="hidden">
+          <!-- Code comparison -->
+          <div class="grid grid-cols-2 gap-4 mb-4">
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">Raw SQL (psycopg3)</span>
+                <span id="raw-timing" class="text-xs font-mono"></span>
+              </div>
+              <div class="bg-gray-900 rounded-lg p-3 overflow-x-auto">
+                <code id="raw-sql-code" class="code-block text-blue-400 whitespace-pre-wrap"></code>
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">SQLAlchemy ORM</span>
+                <span id="orm-timing" class="text-xs font-mono"></span>
+              </div>
+              <div class="bg-gray-900 rounded-lg p-3 overflow-x-auto">
+                <code id="orm-code" class="code-block text-green-400 whitespace-pre-wrap"></code>
+              </div>
+            </div>
+          </div>
+          <!-- Results comparison -->
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <div id="raw-result-table" class="overflow-x-auto border rounded-lg"></div>
+            </div>
+            <div>
+              <div id="orm-result-table" class="overflow-x-auto border rounded-lg"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Relationship Navigator -->
+    <div id="panel-relations" class="hidden space-y-4">
+      <div class="bg-white rounded-lg shadow p-4">
+        <div class="flex items-center gap-4 mb-4">
+          <select id="rel-table" onchange="updateRelPK()" class="border rounded-md px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500">
+            <option value="">Select a table...</option>
+          </select>
+          <input id="rel-pk" type="number" placeholder="Primary key value" class="border rounded-md px-3 py-1.5 text-sm w-40 focus:ring-2 focus:ring-indigo-500" onkeydown="if(event.key==='Enter')navigateRelation()">
+          <button onclick="navigateRelation()" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-sm font-medium transition-colors">Navigate</button>
+          <span id="rel-timing" class="text-xs text-gray-400 ml-auto"></span>
+        </div>
+        <p class="text-xs text-gray-400 mb-4">Select a table and primary key value to explore all related records via foreign keys — discovered automatically by SQLAlchemy reflection.</p>
+        <div id="rel-result"></div>
+      </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+      <div class="bg-white rounded-xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3">
+        <div class="spinner"></div>
+        <p id="loading-text" class="text-gray-700 font-medium">Loading...</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentTab = 'schema';
+    let browsePage_ = 1;
+    const BROWSE_PAGE_SIZE = 10;
+    let schemaData = null;
+
+    function showLoading(msg) { document.getElementById('loading').classList.remove('hidden'); document.getElementById('loading-text').textContent = msg; }
+    function hideLoading() { document.getElementById('loading').classList.add('hidden'); }
+
+    function switchTab(tab) {
+      currentTab = tab;
+      ['schema', 'browse', 'queries', 'relations'].forEach(t => {
+        document.getElementById(`panel-${t}`).classList.toggle('hidden', t !== tab);
+        const btn = document.getElementById(`tab-${t}`);
+        if (t === tab) {
+          btn.className = 'flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors bg-indigo-600 text-white';
+        } else {
+          btn.className = 'flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors text-gray-600 hover:bg-gray-100';
+        }
+      });
+    }
+
+    // ---- Schema Reflection ----
+    async function loadSchema() {
+      showLoading('Reflecting tables via SQLAlchemy...');
+      try {
+        const res = await fetch('/api/orm/tables');
+        const data = await res.json();
+        schemaData = data;
+        document.getElementById('schema-timing').textContent = `Reflected in ${data.elapsed_ms.toFixed(0)}ms`;
+
+        const grid = document.getElementById('schema-grid');
+        grid.innerHTML = data.tables.map(t => `
+          <div class="border rounded-lg p-3 hover:border-indigo-300 transition-colors">
+            <div class="flex items-center justify-between mb-2">
+              <span class="font-mono text-sm font-semibold text-indigo-700">${t.name}</span>
+              <span class="text-[10px] text-gray-400">${t.column_count} cols, ${t.fk_count} FKs</span>
+            </div>
+            <div class="space-y-0.5">
+              ${t.columns.map(c => `
+                <div class="flex items-center gap-1.5 text-xs">
+                  ${c.primary_key ? '<span class="text-amber-500 font-bold" title="Primary Key">PK</span>' : '<span class="w-5"></span>'}
+                  <span class="font-mono text-gray-700">${c.name}</span>
+                  <span class="text-gray-400">${c.type.toLowerCase()}</span>
+                  ${c.nullable ? '' : '<span class="text-red-400 text-[10px]">NOT NULL</span>'}
+                </div>
+              `).join('')}
+            </div>
+            ${t.foreign_keys.length ? `
+              <div class="mt-2 pt-2 border-t">
+                <span class="text-[10px] text-gray-400 uppercase">Foreign Keys</span>
+                ${t.foreign_keys.map(fk => `
+                  <div class="text-xs text-blue-600 mt-0.5">
+                    <span class="font-mono">${fk.column}</span> &rarr; <span class="font-mono">${fk.references}</span>
+                  </div>
+                `).join('')}
+              </div>
+            ` : ''}
+          </div>
+        `).join('');
+
+        // Populate table selectors
+        const browseSelect = document.getElementById('browse-table');
+        const relSelect = document.getElementById('rel-table');
+        browseSelect.innerHTML = '<option value="">Select a table...</option>' + data.tables.map(t => `<option value="${t.name}">${t.name} (${t.column_count} cols)</option>`).join('');
+        relSelect.innerHTML = '<option value="">Select a table...</option>' + data.tables.map(t => `<option value="${t.name}">${t.name}</option>`).join('');
+      } catch (err) {
+        document.getElementById('schema-grid').innerHTML = `<p class="text-red-500">Error: ${err.message}</p>`;
+      } finally {
+        hideLoading();
+      }
+    }
+
+    // ---- Table Browser ----
+    async function browseTable(page) {
+      const table = document.getElementById('browse-table').value;
+      if (!table) return;
+      if (page !== undefined) browsePage_ = page;
+      else browsePage_ = 1;
+
+      const filterCol = document.getElementById('browse-filter-col').value.trim();
+      const filterVal = document.getElementById('browse-filter-val').value.trim();
+
+      let url = `/api/orm/browse?table=${table}&page=${browsePage_}&page_size=${BROWSE_PAGE_SIZE}`;
+      if (filterCol && filterVal) url += `&filter_col=${encodeURIComponent(filterCol)}&filter_val=${encodeURIComponent(filterVal)}`;
+
+      showLoading('Querying via SQLAlchemy...');
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Query failed');
+
+        document.getElementById('browse-timing').textContent = `${data.total_count} rows, ${data.elapsed_ms.toFixed(0)}ms`;
+
+        // Show ORM code
+        const codeBlock = document.getElementById('browse-orm-code');
+        codeBlock.classList.remove('hidden');
+        document.getElementById('browse-code-text').textContent = data.orm_code;
+
+        // Render table
+        renderTable('browse-data', data.columns, data.rows);
+
+        // Pagination
+        const totalPages = Math.ceil(data.total_count / BROWSE_PAGE_SIZE);
+        document.getElementById('browse-pagination').classList.toggle('hidden', totalPages <= 1);
+        document.getElementById('browse-page-info').textContent = `Page ${browsePage_} of ${totalPages}`;
+        document.getElementById('browse-prev').disabled = browsePage_ <= 1;
+        document.getElementById('browse-next').disabled = browsePage_ >= totalPages;
+      } catch (err) {
+        document.getElementById('browse-data').innerHTML = `<p class="text-red-500 p-3">${err.message}</p>`;
+      } finally {
+        hideLoading();
+      }
+    }
+
+    function browsePage(delta) { browseTable(browsePage_ + delta); }
+    function clearFilter() {
+      document.getElementById('browse-filter-col').value = '';
+      document.getElementById('browse-filter-val').value = '';
+      browseTable();
+    }
+
+    // ---- Query Comparison ----
+    async function loadQueries() {
+      const res = await fetch('/api/orm/queries');
+      const data = await res.json();
+      const container = document.getElementById('query-buttons');
+      container.innerHTML = data.queries.map(q => `
+        <button onclick="runQuery('${q.id}')" class="px-4 py-2 bg-white border border-gray-300 hover:border-indigo-400 hover:bg-indigo-50 rounded-lg text-sm transition-colors text-left">
+          <span class="font-medium text-gray-800">${q.name}</span>
+          <span class="block text-xs text-gray-400">${q.description}</span>
+        </button>
+      `).join('');
+    }
+
+    async function runQuery(queryId) {
+      showLoading('Running ORM vs Raw SQL...');
+      try {
+        const res = await fetch(`/api/orm/query?query_id=${queryId}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Failed');
+
+        document.getElementById('query-result').classList.remove('hidden');
+
+        // Code
+        document.getElementById('raw-sql-code').textContent = data.query.raw_sql;
+        document.getElementById('orm-code').textContent = data.query.orm_code;
+
+        // Timing
+        const rawMs = data.raw_sql.elapsed_ms;
+        const ormMs = data.orm.elapsed_ms;
+        document.getElementById('raw-timing').textContent = `${rawMs.toFixed(1)}ms`;
+        document.getElementById('raw-timing').className = `text-xs font-mono ${rawMs <= ormMs ? 'text-green-600' : 'text-gray-500'}`;
+        document.getElementById('orm-timing').textContent = `${ormMs.toFixed(1)}ms`;
+        document.getElementById('orm-timing').className = `text-xs font-mono ${ormMs <= rawMs ? 'text-green-600' : 'text-gray-500'}`;
+
+        // Result tables
+        if (data.raw_sql.error) {
+          document.getElementById('raw-result-table').innerHTML = `<p class="p-3 text-sm text-red-500">${data.raw_sql.error}</p>`;
+        } else {
+          renderTable('raw-result-table', data.raw_sql.columns, data.raw_sql.rows);
+        }
+        if (data.orm.error) {
+          document.getElementById('orm-result-table').innerHTML = `<p class="p-3 text-sm text-red-500">${data.orm.error}</p>`;
+        } else {
+          renderTable('orm-result-table', data.orm.columns, data.orm.rows);
+        }
+      } catch (err) {
+        alert('Query failed: ' + err.message);
+      } finally {
+        hideLoading();
+      }
+    }
+
+    // ---- Relationship Navigator ----
+    function updateRelPK() {
+      document.getElementById('rel-pk').value = '1';
+    }
+
+    async function navigateRelation() {
+      const table = document.getElementById('rel-table').value;
+      const pk = document.getElementById('rel-pk').value;
+      if (!table || !pk) return;
+
+      showLoading('Navigating relationships...');
+      try {
+        const res = await fetch(`/api/orm/relationships?table=${table}&pk_value=${pk}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Failed');
+
+        document.getElementById('rel-timing').textContent = `${data.elapsed_ms.toFixed(0)}ms`;
+
+        let html = '';
+
+        // Source row
+        html += `
+          <div class="mb-4 border rounded-lg p-3 bg-indigo-50">
+            <h3 class="text-sm font-semibold text-indigo-700 mb-2">${data.source_table} (PK: ${pk})</h3>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+              ${data.source_columns.map(col => `
+                <div class="text-xs">
+                  <span class="text-gray-400">${col}</span>
+                  <span class="block font-mono text-gray-800">${data.source_row[col] !== null && data.source_row[col] !== undefined ? data.source_row[col] : '<span class="text-gray-300">NULL</span>'}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+
+        // Related tables
+        if (data.related.length === 0) {
+          html += '<p class="text-sm text-gray-400">No related records found via foreign keys.</p>';
+        } else {
+          html += '<div class="space-y-4">';
+          data.related.forEach(rel => {
+            html += `
+              <div class="border rounded-lg overflow-hidden">
+                <div class="bg-gray-100 px-3 py-2 flex items-center justify-between">
+                  <div>
+                    <span class="font-mono text-sm font-semibold text-gray-700">${rel.table}</span>
+                    <span class="text-xs text-gray-400 ml-2">via ${rel.fk_column}</span>
+                  </div>
+                  <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">${rel.count} records</span>
+                </div>
+            `;
+            if (rel.sample_rows.length > 0) {
+              html += '<div class="overflow-x-auto">';
+              html += renderTableHTML(rel.columns, rel.sample_rows);
+              html += '</div>';
+              if (rel.count > 5) {
+                html += `<div class="px-3 py-1.5 bg-gray-50 text-xs text-gray-400 text-center">Showing 5 of ${rel.count} records</div>`;
+              }
+            } else {
+              html += '<p class="p-3 text-xs text-gray-400">No records</p>';
+            }
+            html += '</div>';
+          });
+          html += '</div>';
+        }
+
+        document.getElementById('rel-result').innerHTML = html;
+      } catch (err) {
+        document.getElementById('rel-result').innerHTML = `<p class="text-red-500">${err.message}</p>`;
+      } finally {
+        hideLoading();
+      }
+    }
+
+    // ---- Shared render helpers ----
+    function renderTableHTML(columns, rows) {
+      let html = '<table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr>';
+      columns.forEach(col => {
+        html += `<th class="px-3 py-1.5 text-left text-[10px] font-medium text-gray-500 uppercase">${col}</th>`;
+      });
+      html += '</tr></thead><tbody class="divide-y divide-gray-100">';
+      rows.forEach(row => {
+        html += '<tr class="hover:bg-gray-50">';
+        columns.forEach(col => {
+          const val = row[col] !== null && row[col] !== undefined ? row[col] : '';
+          html += `<td class="px-3 py-1.5 text-xs text-gray-600 whitespace-nowrap">${val === '' ? '<span class="text-gray-300">-</span>' : val}</td>`;
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      return html;
+    }
+
+    function renderTable(containerId, columns, rows) {
+      document.getElementById(containerId).innerHTML = renderTableHTML(columns, rows);
+    }
+
+    // ---- Init ----
+    loadSchema();
+    loadQueries();
+  </script>
+</body>
+</html>

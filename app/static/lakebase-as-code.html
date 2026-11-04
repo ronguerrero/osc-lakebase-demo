@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lakebase as Code (DABs) - Lakebase Autoscaling</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .spinner { border: 3px solid #e5e7eb; border-top: 3px solid #16a34a; border-radius: 50%; width: 16px; height: 16px; animation: spin 0.8s linear infinite; display: inline-block; vertical-align: middle; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    pre { white-space: pre; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-7xl mx-auto px-4 py-6">
+    <!-- Header -->
+    <div class="mb-6">
+      <div class="flex items-center gap-3">
+        <a href="/" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+        </a>
+        <h1 class="text-3xl font-bold text-gray-900">Lakebase as Code (DABs)</h1>
+      </div>
+      <p class="text-gray-500 mt-1 ml-8">Declare a Lakebase project, and optionally an app bound to it, in a bundle. Deploy it, use it, destroy it.</p>
+    </div>
+
+    <!-- How it works -->
+    <div class="mb-6 bg-white rounded-lg shadow p-4">
+      <div class="flex items-center gap-2 mb-2">
+        <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <span class="text-sm font-medium text-gray-700">How it works</span>
+      </div>
+      <div class="text-sm text-gray-500 space-y-1">
+        <p>The bundle below declares a <code class="bg-gray-100 px-1 rounded">postgres_projects</code> resource (and, on the second tab, an <code class="bg-gray-100 px-1 rounded">apps</code> resource bound to its database). This app runs the same <code class="bg-gray-100 px-1 rounded">databricks bundle deploy</code> you would run from a laptop or a CI pipeline.</p>
+        <p>Your names are passed as bundle variables and each deployment keeps its own state folder, so several people can deploy the same bundle at once. You get <strong>CAN_MANAGE</strong> on what you deploy; use <strong>Destroy</strong> to remove it.</p>
+      </div>
+      <div id="cli-status" class="text-xs text-gray-400 mt-2"></div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex gap-1 border-b border-gray-200 mb-4">
+      <button id="tab-lakebase" onclick="switchTab('lakebase')" class="px-4 py-2 text-sm font-medium border-b-2 -mb-px">Lakebase project</button>
+      <button id="tab-app" onclick="switchTab('app')" class="px-4 py-2 text-sm font-medium border-b-2 -mb-px">Lakebase project + App</button>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+      <!-- Inputs + deploy -->
+      <div class="bg-white rounded-lg shadow p-4">
+        <h2 class="text-sm font-semibold text-gray-700 mb-3" id="form-title"></h2>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Lakebase project id</label>
+        <input id="project-id" oninput="refreshCommand()" class="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono mb-1">
+        <p class="text-xs text-gray-400 mb-3">Lowercase letters, digits and dashes; starts with a letter.</p>
+        <div id="app-name-row">
+          <label class="block text-xs font-medium text-gray-600 mb-1">App name</label>
+          <input id="app-name" oninput="refreshCommand()" class="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono mb-1">
+          <p class="text-xs text-gray-400 mb-3">2-30 characters; becomes part of the app URL.</p>
+        </div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">Command the app runs</label>
+        <pre id="command" class="bg-gray-900 text-green-300 text-xs rounded p-3 overflow-x-auto mb-3"></pre>
+        <div class="flex items-center gap-3">
+          <button id="btn-deploy" onclick="deploy()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-medium transition-colors disabled:opacity-50">Deploy bundle</button>
+          <span id="deploy-msg" class="text-sm text-gray-500"></span>
+        </div>
+      </div>
+
+      <!-- Bundle files -->
+      <div class="bg-white rounded-lg shadow p-4 flex flex-col">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-sm font-semibold text-gray-700">Bundle files</h2>
+          <div id="file-tabs" class="flex gap-1"></div>
+        </div>
+        <pre id="file-content" class="bg-gray-900 text-gray-100 text-xs rounded p-3 overflow-auto flex-1" style="max-height: 420px"></pre>
+      </div>
+    </div>
+
+    <!-- Live log -->
+    <div id="log-card" class="bg-white rounded-lg shadow p-4 mb-6 hidden">
+      <div class="flex items-center gap-2 mb-2">
+        <h2 class="text-sm font-semibold text-gray-700" id="log-title">Deploy log</h2>
+        <span id="log-status"></span>
+      </div>
+      <pre id="log" class="bg-gray-900 text-gray-100 text-xs rounded p-3 overflow-auto" style="max-height: 320px"></pre>
+    </div>
+
+    <!-- Deployments -->
+    <div class="bg-white rounded-lg shadow p-4">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-semibold text-gray-700">Bundle deployments on this workspace <span id="dep-count" class="text-gray-400 font-normal"></span></h2>
+        <button onclick="loadStatus()" class="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-sm font-medium transition-colors">Refresh</button>
+      </div>
+      <div id="deployments" class="space-y-2 text-sm"></div>
+    </div>
+  </div>
+
+  <script>
+    let currentTab = 'lakebase';
+    let templates = {};
+    let currentFile = 'databricks.yml';
+    let user = '';
+    let activeJob = null;
+
+    function slug(s) { return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); }
+    function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
+
+    function switchTab(tab) {
+      currentTab = tab;
+      for (const t of ['lakebase', 'app']) {
+        const b = document.getElementById('tab-' + t);
+        b.className = 'px-4 py-2 text-sm font-medium border-b-2 -mb-px ' +
+          (t === tab ? 'border-green-600 text-green-700' : 'border-transparent text-gray-500 hover:text-gray-700');
+      }
+      document.getElementById('app-name-row').style.display = tab === 'app' ? '' : 'none';
+      document.getElementById('form-title').textContent = tab === 'app'
+        ? 'Deploy a Lakebase project and a Databricks App bound to it'
+        : 'Deploy a Lakebase project';
+      const base = slug(user.split('@')[0]).split('-')[0] || 'me';
+      document.getElementById('project-id').value = tab === 'app' ? `osc-${base}-app-db` : `osc-${base}-lakebase`;
+      document.getElementById('app-name').value = `osc-${base}-checkin`;
+      currentFile = 'databricks.yml';
+      loadTemplate();
+      refreshCommand();
+    }
+
+    function refreshCommand() {
+      const pid = document.getElementById('project-id').value;
+      let cmd = `databricks bundle deploy \\\n  --var project_id=${pid} \\\n  --var owner=${user}`;
+      if (currentTab === 'app') {
+        cmd += ` \\\n  --var app_name=${document.getElementById('app-name').value}\n\ndatabricks bundle run hello_app --var ...`;
+      }
+      document.getElementById('command').textContent = cmd;
+    }
+
+    async function loadTemplate() {
+      const r = await fetch('/api/dab/template?kind=' + currentTab);
+      templates = (await r.json()).files;
+      renderFiles();
+    }
+
+    function renderFiles() {
+      document.getElementById('file-tabs').innerHTML = Object.keys(templates).map(f =>
+        `<button onclick="currentFile='${f}';renderFiles()" class="px-2 py-1 text-xs rounded font-mono ${f === currentFile ? 'bg-green-100 text-green-700' : 'text-gray-500 hover:bg-gray-100'}">${f}</button>`
+      ).join('');
+      document.getElementById('file-content').textContent = templates[currentFile] || '';
+    }
+
+    async function loadStatus() {
+      const r = await fetch('/api/dab/status');
+      const s = await r.json();
+      if (!user) { user = s.user; switchTab(currentTab); }
+      document.getElementById('cli-status').textContent =
+        `Databricks CLI v${s.cli.version} (linux/${s.cli.arch}): ` +
+        (s.cli.installed ? 'installed' : s.cli.status === 'error' ? 'download failed: ' + s.cli.error : 'downloaded on first deploy');
+      document.getElementById('dep-count').textContent = `(${s.deployments.length} of ${s.max_deployments})`;
+      const running = new Set(s.jobs.filter(j => j.status === 'running').map(j => j.meta.project_id));
+      document.getElementById('deployments').innerHTML = s.deployments.length ? s.deployments.map(d => `
+        <div class="flex items-center justify-between border border-gray-200 rounded p-3">
+          <div>
+            <span class="px-2 py-0.5 rounded text-xs font-medium ${d.kind === 'app' ? 'bg-indigo-100 text-indigo-700' : 'bg-green-100 text-green-700'}">${d.kind === 'app' ? 'Lakebase + App' : 'Lakebase'}</span>
+            <span class="font-mono ml-2">${escapeHtml(d.project_id)}</span>
+            ${d.app_name ? `<span class="text-gray-400 mx-1">&rarr;</span><span class="font-mono">${escapeHtml(d.app_name)}</span>` : ''}
+            ${d.state === 'failed' ? '<span class="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700 ml-1">deploy failed</span>' : ''}
+            <span class="text-xs text-gray-400 ml-2">by ${escapeHtml(d.owner || '?')}${d.created ? ', ' + new Date(d.created * 1000).toLocaleString() : ''}</span>
+            <div id="test-${d.project_id}" class="text-xs text-gray-500 mt-1"></div>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            ${d.app_url ? `<a href="${d.app_url}" target="_blank" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-medium">Open app</a>` : ''}
+            <button onclick="testConnection('${d.project_id}')" class="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-xs font-medium">Test connection</button>
+            <button onclick="destroy('${d.project_id}')" ${running.has(d.project_id) ? 'disabled' : ''} class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-medium disabled:opacity-50">Destroy</button>
+          </div>
+        </div>`).join('') : '<p class="text-gray-400">No bundle deployments yet.</p>';
+    }
+
+    async function deploy() {
+      const body = { kind: currentTab, project_id: document.getElementById('project-id').value.trim() };
+      if (currentTab === 'app') body.app_name = document.getElementById('app-name').value.trim();
+      const msg = document.getElementById('deploy-msg');
+      msg.textContent = '';
+      const r = await fetch('/api/dab/deploy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const data = await r.json();
+      if (!r.ok) { msg.innerHTML = `<span class="text-red-600">${escapeHtml(data.detail)}</span>`; return; }
+      followJob(data.job_id, `Deploy ${body.project_id}`);
+    }
+
+    async function destroy(pid) {
+      if (!confirm(`Destroy bundle deployment ${pid}? This deletes its Lakebase project (and app).`)) return;
+      const r = await fetch('/api/dab/destroy/' + encodeURIComponent(pid), { method: 'POST' });
+      const data = await r.json();
+      if (!r.ok) { alert(data.detail); return; }
+      followJob(data.job_id, `Destroy ${pid}`);
+      loadStatus();
+    }
+
+    async function followJob(jobId, title) {
+      activeJob = jobId;
+      document.getElementById('log-card').classList.remove('hidden');
+      document.getElementById('log-title').textContent = title;
+      const log = document.getElementById('log');
+      log.textContent = '';
+      document.getElementById('btn-deploy').disabled = true;
+      let offset = 0;
+      while (activeJob === jobId) {
+        const r = await fetch(`/api/dab/jobs/${jobId}?offset=${offset}`);
+        const j = await r.json();
+        if (j.log.length) { log.textContent += j.log.join('\n') + '\n'; log.scrollTop = log.scrollHeight; }
+        offset = j.next_offset;
+        const secs = Math.round(((j.ended || Date.now() / 1000) - j.started));
+        document.getElementById('log-status').innerHTML = j.status === 'running'
+          ? `<span class="spinner"></span> <span class="text-xs text-gray-500">${secs}s</span>`
+          : `<span class="text-xs font-medium ${j.status === 'succeeded' ? 'text-green-600' : 'text-red-600'}">${j.status} in ${secs}s</span>`;
+        if (j.status !== 'running') break;
+        await new Promise(res => setTimeout(res, 1500));
+      }
+      document.getElementById('btn-deploy').disabled = false;
+      loadStatus();
+    }
+
+    async function testConnection(pid) {
+      const el = document.getElementById('test-' + pid);
+      el.innerHTML = '<span class="spinner"></span> connecting (the endpoint may be waking up)...';
+      const r = await fetch('/api/dab/test/' + encodeURIComponent(pid), { method: 'POST' });
+      const d = await r.json();
+      el.innerHTML = r.ok
+        ? `<span class="text-green-700">Connected in ${d.elapsed_ms} ms</span> as <code>${escapeHtml(d.user)}</code> to <code>${escapeHtml(d.host)}</code>: ${escapeHtml(d.version)}`
+        : `<span class="text-red-600">${escapeHtml(d.detail || 'failed')}</span>`;
+    }
+
+    switchTab('lakebase');
+    loadStatus();
+    setInterval(loadStatus, 15000);
+  </script>
+</body>
+</html>

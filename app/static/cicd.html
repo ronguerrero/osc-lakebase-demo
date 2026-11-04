@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CI/CD Schema Migration Demo - Lakebase Autoscaling</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .spinner { border: 4px solid #e5e7eb; border-top: 4px solid #6366f1; border-radius: 50%; width: 36px; height: 36px; animation: spin 0.8s linear infinite; display: inline-block; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-7xl mx-auto px-4 py-6">
+    <!-- Header -->
+    <div class="mb-6">
+      <div class="flex items-center gap-3">
+        <a href="/" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+        </a>
+        <h1 class="text-3xl font-bold text-gray-900">CI/CD Schema Migration Demo</h1>
+      </div>
+      <div class="flex items-center gap-4 mt-1 ml-8">
+        <p class="text-gray-500">Propagate schema changes from development to staging to production using Lakebase branches</p>
+        <span class="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs font-mono rounded">advisors + advisor_risk_scores (risk-based exam targeting)</span>
+        <button onclick="resetDemo()" id="btn-reset" class="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-sm font-medium transition-colors">
+          Reset Demo
+        </button>
+      </div>
+    </div>
+
+    <!-- How it works -->
+    <div class="mb-6 bg-white rounded-lg shadow p-4">
+      <div class="flex items-center gap-2 mb-2">
+        <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <span class="text-sm font-medium text-gray-700">How it works</span>
+      </div>
+      <div class="text-sm text-gray-500 space-y-1">
+        <p>Each environment is a <strong>Lakebase branch</strong>. Migrations are defined as a changelog and tracked per-environment via a <code class="bg-gray-100 px-1 rounded">schema_migrations</code> table — just like Liquibase or Flyway.</p>
+        <p>Apply migrations to dev first, validate, promote to staging, then production. Each branch is fully isolated — schema changes on dev don't affect production until promoted.</p>
+      </div>
+    </div>
+
+    <!-- Migration Changelog -->
+    <div class="mb-6 bg-white rounded-lg shadow p-4">
+      <h2 class="text-sm font-semibold text-gray-700 mb-3">Migration Changelog</h2>
+      <div id="changelog" class="space-y-2"></div>
+    </div>
+
+    <!-- Pipeline: 3 environments -->
+    <div class="grid grid-cols-3 gap-4 mb-6">
+
+      <!-- Development -->
+      <div class="bg-white rounded-lg shadow overflow-hidden">
+        <div class="bg-amber-500 text-white px-4 py-2 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="font-medium">Development</span>
+            <span id="dev-status" class="text-xs opacity-80"></span>
+          </div>
+          <span id="dev-badge" class="text-xs bg-amber-600 px-2 py-0.5 rounded-full"></span>
+        </div>
+        <div class="p-4">
+          <div id="dev-migrations" class="mb-3 text-xs space-y-1"></div>
+          <div id="dev-schema" class="mb-3"></div>
+          <div class="flex gap-2">
+            <button id="btn-create-dev" onclick="createEnv('development')" class="flex-1 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded text-sm font-medium transition-colors disabled:opacity-50">
+              Create Branch
+            </button>
+            <button id="btn-migrate-dev" onclick="migrate('development')" disabled class="flex-1 px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded text-sm font-medium transition-colors disabled:opacity-50">
+              Apply Migrations
+            </button>
+          </div>
+        </div>
+        <div class="border-t">
+          <div id="dev-table" class="overflow-x-auto"></div>
+        </div>
+      </div>
+
+      <!-- Arrow -->
+      <!-- Staging -->
+      <div class="bg-white rounded-lg shadow overflow-hidden">
+        <div class="bg-blue-500 text-white px-4 py-2 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="font-medium">Staging</span>
+            <span id="stg-status" class="text-xs opacity-80"></span>
+          </div>
+          <span id="stg-badge" class="text-xs bg-blue-600 px-2 py-0.5 rounded-full"></span>
+        </div>
+        <div class="p-4">
+          <div id="stg-migrations" class="mb-3 text-xs space-y-1"></div>
+          <div id="stg-schema" class="mb-3"></div>
+          <div class="flex gap-2">
+            <button id="btn-create-stg" onclick="createEnv('staging')" class="flex-1 px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm font-medium transition-colors disabled:opacity-50">
+              Create Branch
+            </button>
+            <button id="btn-migrate-stg" onclick="migrate('staging')" disabled class="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-medium transition-colors disabled:opacity-50">
+              Promote to Staging
+            </button>
+          </div>
+        </div>
+        <div class="border-t">
+          <div id="stg-table" class="overflow-x-auto"></div>
+        </div>
+      </div>
+
+      <!-- Production -->
+      <div class="bg-white rounded-lg shadow overflow-hidden">
+        <div class="bg-green-600 text-white px-4 py-2 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="font-medium">Production</span>
+            <span id="prod-status" class="text-xs opacity-80"></span>
+          </div>
+          <span id="prod-badge" class="text-xs bg-green-700 px-2 py-0.5 rounded-full"></span>
+        </div>
+        <div class="p-4">
+          <div id="prod-migrations" class="mb-3 text-xs space-y-1"></div>
+          <div id="prod-schema" class="mb-3"></div>
+          <div class="flex gap-2">
+            <button id="btn-migrate-prod" onclick="migrate('production')" disabled class="flex-1 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-medium transition-colors disabled:opacity-50">
+              Deploy to Production
+            </button>
+            <button id="btn-rollback-prod" onclick="rollback('production')" disabled class="flex-1 px-3 py-2 border border-red-300 text-red-600 hover:bg-red-50 rounded text-sm font-medium transition-colors disabled:opacity-50">
+              Rollback
+            </button>
+          </div>
+        </div>
+        <div class="border-t">
+          <div id="prod-table" class="overflow-x-auto"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    <div id="pagination" class="hidden flex items-center justify-center gap-4 bg-white rounded-lg shadow p-3 mb-6">
+      <button id="btn-prev" onclick="changePage(-1)" class="px-3 py-1 rounded border text-sm hover:bg-gray-50 disabled:opacity-50">Previous</button>
+      <span id="page-info" class="text-sm text-gray-600"></span>
+      <button id="btn-next" onclick="changePage(1)" class="px-3 py-1 rounded border text-sm hover:bg-gray-50 disabled:opacity-50">Next</button>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+      <div class="bg-white rounded-xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3">
+        <div class="spinner"></div>
+        <p id="loading-text" class="text-gray-700 font-medium">Loading...</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentPage = 1;
+    const PAGE_SIZE = 10;
+    const envPrefixes = { development: 'dev', staging: 'stg', production: 'prod' };
+    let allMigrations = [];
+
+    function showLoading(msg) {
+      document.getElementById('loading').classList.remove('hidden');
+      document.getElementById('loading-text').textContent = msg;
+    }
+    function hideLoading() {
+      document.getElementById('loading').classList.add('hidden');
+    }
+
+    function renderChangelog(migrations, envData) {
+      const container = document.getElementById('changelog');
+      let html = '<div class="grid grid-cols-1 gap-1">';
+      migrations.forEach(m => {
+        // Check which envs have this migration
+        const devApplied = envData.development?.applied_migrations?.includes(m.id);
+        const stgApplied = envData.staging?.applied_migrations?.includes(m.id);
+        const prodApplied = envData.production?.applied_migrations?.includes(m.id);
+
+        html += `<div class="flex items-center gap-3 p-2 rounded ${prodApplied ? 'bg-green-50' : devApplied || stgApplied ? 'bg-amber-50' : 'bg-gray-50'}">
+          <span class="font-mono text-xs font-bold text-gray-500 w-8">${m.id}</span>
+          <span class="text-sm text-gray-700 flex-1">${m.description}</span>
+          <div class="flex gap-1">
+            <span class="text-xs px-1.5 py-0.5 rounded ${devApplied ? 'bg-amber-200 text-amber-800' : 'bg-gray-200 text-gray-400'}">DEV</span>
+            <span class="text-xs px-1.5 py-0.5 rounded ${stgApplied ? 'bg-blue-200 text-blue-800' : 'bg-gray-200 text-gray-400'}">STG</span>
+            <span class="text-xs px-1.5 py-0.5 rounded ${prodApplied ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-400'}">PROD</span>
+          </div>
+        </div>`;
+      });
+      html += '</div>';
+      container.innerHTML = html;
+    }
+
+    function renderSchema(prefix, schema, newCols) {
+      const container = document.getElementById(`${prefix}-schema`);
+      if (!schema || !schema.length) {
+        container.innerHTML = '<p class="text-xs text-gray-400">No schema info</p>';
+        return;
+      }
+      let html = '<div class="text-xs space-y-0.5">';
+      schema.forEach(col => {
+        const isNew = newCols.includes(col.column_name);
+        html += `<div class="flex items-center gap-1 ${isNew ? 'text-indigo-600 font-medium' : 'text-gray-500'}">
+          <span class="font-mono">${col.column_name}</span>
+          <span class="text-gray-400">${col.data_type}</span>
+          ${isNew ? '<span class="bg-indigo-100 text-indigo-600 px-1 rounded text-[10px]">NEW</span>' : ''}
+        </div>`;
+      });
+      html += '</div>';
+      container.innerHTML = html;
+    }
+
+    function renderMigrationStatus(prefix, applied, total) {
+      const container = document.getElementById(`${prefix}-migrations`);
+      if (applied.length === 0) {
+        container.innerHTML = '<p class="text-gray-400">No migrations applied</p>';
+      } else {
+        container.innerHTML = `<p class="text-gray-600">${applied.length}/${total} migrations applied</p>`;
+      }
+    }
+
+    function renderDataTable(prefix, data) {
+      const container = document.getElementById(`${prefix}-table`);
+      if (!data.rows || !data.rows.length) {
+        container.innerHTML = '<p class="p-3 text-center text-xs text-gray-400">No data</p>';
+        return;
+      }
+
+      const newCols = ['risk_score', 'exam_priority'];
+      let html = '<table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr>';
+      data.columns.forEach(col => {
+        const isNew = newCols.includes(col);
+        html += `<th class="px-2 py-1.5 text-left text-[10px] font-medium ${isNew ? 'text-indigo-600 bg-indigo-50' : 'text-gray-500'} uppercase">${col}</th>`;
+      });
+      html += '</tr></thead><tbody class="divide-y divide-gray-100">';
+      data.rows.forEach(row => {
+        html += '<tr>';
+        data.columns.forEach(col => {
+          const val = row[col] !== null && row[col] !== undefined ? row[col] : '';
+          const isNew = newCols.includes(col);
+          html += `<td class="px-2 py-1 text-[11px] ${isNew ? 'text-indigo-700 bg-indigo-50 font-medium' : 'text-gray-600'} whitespace-nowrap">${val === '' ? '<span class="text-gray-300">-</span>' : val}</td>`;
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    async function loadStatus() {
+      try {
+        const [statusRes, compareRes] = await Promise.all([
+          fetch('/api/cicd/status'),
+          fetch(`/api/cicd/compare?page=${currentPage}&page_size=${PAGE_SIZE}`),
+        ]);
+        const status = await statusRes.json();
+        const compare = await compareRes.json();
+
+        allMigrations = status.migrations;
+        const envData = status.environments;
+        const newCols = ['risk_score', 'exam_priority'];
+
+        // Render changelog
+        renderChangelog(allMigrations, envData);
+
+        // Per-environment rendering
+        for (const [env, prefix] of Object.entries(envPrefixes)) {
+          const info = envData[env];
+          const data = compare.environments[env];
+
+          // Badge
+          const badge = document.getElementById(`${prefix}-badge`);
+          if (!info.exists) {
+            badge.textContent = 'Not Created';
+          } else if (info.pending_count > 0) {
+            badge.textContent = `${info.pending_count} pending`;
+          } else {
+            badge.textContent = 'Up to date';
+          }
+
+          // Status
+          document.getElementById(`${prefix}-status`).textContent = info.exists ? '' : '(no branch)';
+
+          // Show error if any
+          if (info.error) {
+            console.error(`[${env}] Error:`, info.error);
+            document.getElementById(`${prefix}-status`).textContent = `Error: ${info.error}`;
+            document.getElementById(`${prefix}-status`).className = 'text-xs text-red-500';
+          }
+
+          // Schema
+          if (info.exists) {
+            renderSchema(prefix, info.schema, newCols);
+            renderMigrationStatus(prefix, info.applied_migrations, allMigrations.length);
+          } else {
+            document.getElementById(`${prefix}-schema`).innerHTML = '';
+            document.getElementById(`${prefix}-migrations`).innerHTML = '';
+          }
+
+          // Data table
+          if (data && data.error) {
+            console.error(`[${env}] Compare error:`, data.error);
+          }
+          if (info.exists && data && data.rows && data.rows.length) {
+            renderDataTable(prefix, data);
+          } else if (!info.exists) {
+            document.getElementById(`${prefix}-table`).innerHTML = '';
+          }
+        }
+
+        // Button states
+        const devExists = envData.development.exists;
+        const stgExists = envData.staging.exists;
+        document.getElementById('btn-create-dev').disabled = devExists;
+        document.getElementById('btn-create-dev').textContent = devExists ? 'Branch Active' : 'Create Branch';
+        document.getElementById('btn-migrate-dev').disabled = !devExists || envData.development.pending_count === 0;
+
+        document.getElementById('btn-create-stg').disabled = stgExists;
+        document.getElementById('btn-create-stg').textContent = stgExists ? 'Branch Active' : 'Create Branch';
+        document.getElementById('btn-migrate-stg').disabled = !stgExists || envData.staging.pending_count === 0;
+
+        document.getElementById('btn-migrate-prod').disabled = envData.production.pending_count === 0;
+        document.getElementById('btn-rollback-prod').disabled = envData.production.applied_migrations.length === 0;
+
+        // Pagination
+        const maxCount = Math.max(...Object.values(compare.environments).map(e => e.total_count || 0));
+        const totalPages = Math.ceil(maxCount / PAGE_SIZE);
+        const pag = document.getElementById('pagination');
+        if (totalPages > 1) {
+          pag.classList.remove('hidden');
+          document.getElementById('page-info').textContent = `Page ${currentPage} of ${totalPages}`;
+          document.getElementById('btn-prev').disabled = currentPage <= 1;
+          document.getElementById('btn-next').disabled = currentPage >= totalPages;
+        } else {
+          pag.classList.add('hidden');
+        }
+      } catch (err) {
+        console.error('Failed to load status:', err);
+      }
+    }
+
+    async function createEnv(env) {
+      const prefix = envPrefixes[env];
+      showLoading(`Creating ${env} branch (this may take 30-60s)...`);
+      document.getElementById(`btn-create-${prefix}`).disabled = true;
+      try {
+        const res = await fetch(`/api/cicd/create-env?env=${env}`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Failed');
+        await loadStatus();
+      } catch (err) {
+        alert(`Failed to create ${env}: ` + err.message);
+      } finally {
+        hideLoading();
+      }
+    }
+
+    async function migrate(env) {
+      const prefix = envPrefixes[env];
+      const label = env === 'production' ? 'Deploying to production' : `Applying migrations to ${env}`;
+      showLoading(`${label}...`);
+
+      const btnId = env === 'production' ? 'btn-migrate-prod' : `btn-migrate-${prefix}`;
+      document.getElementById(btnId).disabled = true;
+
+      try {
+        const res = await fetch(`/api/cicd/migrate?env=${env}`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Failed');
+        // Show result briefly
+        const msg = data.message + (data.results ? ` (${data.results.map(r => r.id + ':' + r.status).join(', ')})` : '');
+        console.log('Migration result:', msg);
+        if (data.applied === 0) {
+          alert(data.message);
+        }
+        await loadStatus();
+      } catch (err) {
+        alert(`Migration failed: ` + err.message);
+      } finally {
+        hideLoading();
+      }
+    }
+
+    async function rollback(env) {
+      if (!confirm(`Roll back all migrations on ${env}?`)) return;
+      showLoading(`Rolling back ${env} migrations...`);
+      document.getElementById('btn-rollback-prod').disabled = true;
+      try {
+        const res = await fetch(`/api/cicd/rollback?env=${env}`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Failed');
+        await loadStatus();
+      } catch (err) {
+        alert(`Rollback failed: ` + err.message);
+      } finally {
+        hideLoading();
+      }
+    }
+
+    async function resetDemo() {
+      if (!confirm('This will delete dev/staging branches and rollback production migrations. Proceed?')) return;
+      showLoading('Resetting demo...');
+      document.getElementById('btn-reset').disabled = true;
+      try {
+        const res = await fetch('/api/cicd/reset', { method: 'POST' });
+        await res.json();
+        currentPage = 1;
+        await loadStatus();
+      } catch (err) {
+        alert('Reset failed: ' + err.message);
+      } finally {
+        hideLoading();
+        document.getElementById('btn-reset').disabled = false;
+      }
+    }
+
+    function changePage(delta) {
+      currentPage += delta;
+      loadStatus();
+    }
+
+    loadStatus();
+  </script>
+</body>
+</html>

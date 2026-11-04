@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OSC Registrant Oversight - Lakehouse vs Lakebase</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    let OLAP_LABEL = '5M';  // set from /api/analytics/olap-status
+
+    tailwind.config = {
+      safelist: [
+        'bg-blue-50', 'bg-blue-100', 'bg-green-50', 'bg-green-100',
+        'border-blue-200', 'border-green-200',
+        'text-blue-700', 'text-green-700',
+        'bg-purple-100', 'text-purple-700',
+        'bg-amber-100', 'text-amber-700',
+        'bg-indigo-100', 'text-indigo-700',
+        'bg-red-100', 'text-red-700',
+        'bg-orange-100', 'text-orange-700',
+        'bg-cyan-100', 'text-cyan-700',
+      ]
+    }
+  </script>
+  <style>
+    .editing { background-color: #fefce8 !important; }
+    .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #3b82f6; border-radius: 50%; width: 20px; height: 20px; animation: spin 0.8s linear infinite; display: inline-block; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-7xl mx-auto px-4 py-6">
+    <!-- Header -->
+    <div class="mb-6">
+      <div class="flex items-center gap-3">
+        <a href="/" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+        </a>
+        <h1 class="text-3xl font-bold text-gray-900">Lakehouse vs Lakebase</h1>
+      </div>
+      <p class="text-gray-500 mt-1 ml-8">Compare Lakehouse (DBSQL) and Lakebase (Postgres) performance on the same OSC registrant-oversight dataset (~570K records across 10 tables)</p>
+    </div>
+
+    <!-- Tab Navigation -->
+    <div class="flex gap-1 mb-6 bg-white rounded-lg shadow p-1 w-fit">
+      <button id="tab-btn-browser" onclick="switchTab('browser')"
+        class="px-4 py-2 rounded-md text-sm font-medium bg-gray-900 text-white transition-colors">Table Browser</button>
+      <button id="tab-btn-analytics" onclick="switchTab('analytics')"
+        class="px-4 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">Analytics Benchmark</button>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- TAB: Table Browser                           -->
+    <!-- ============================================ -->
+    <div id="tab-browser">
+      <!-- Source Toggle -->
+      <div class="flex items-center gap-4 mb-6 bg-white rounded-lg shadow p-4">
+        <span class="font-medium text-gray-700">Data Source:</span>
+        <div class="flex gap-1 bg-gray-100 rounded-lg p-1">
+          <div class="flex gap-0.5">
+            <button id="btn-dbsql_statement" onclick="setSource('dbsql_statement')"
+              class="px-3 py-2 rounded-md text-sm font-medium transition-all" title="Databricks Statement Execution API">
+              DBSQL Statement API
+            </button>
+            <button id="btn-dbsql_connector" onclick="setSource('dbsql_connector')"
+              class="px-3 py-2 rounded-md text-sm font-medium transition-all" title="Databricks SQL Connector (Thrift/JDBC)">
+              DBSQL Connector
+            </button>
+          </div>
+          <div class="w-px bg-gray-300 mx-1"></div>
+          <div class="flex gap-0.5">
+            <button id="btn-lakebase_pg" onclick="setSource('lakebase_pg')"
+              class="px-3 py-2 rounded-md text-sm font-medium transition-all" title="Lakebase via psycopg (Postgres wire protocol)">
+              Lakebase Postgres
+            </button>
+            <button id="btn-lakebase_dataapi" onclick="setSource('lakebase_dataapi')"
+              class="px-3 py-2 rounded-md text-sm font-medium transition-all" title="Lakebase Data API (PostgREST)">
+              Lakebase Data API
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Response Time Banner -->
+      <div id="response-time-banner" class="hidden mb-6 rounded-lg shadow p-5">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <span id="rt-label" class="text-sm font-medium text-gray-500 uppercase tracking-wide">Query Response</span>
+            <span id="rt-source" class="text-sm font-medium px-2 py-0.5 rounded-full"></span>
+          </div>
+          <div class="flex items-baseline gap-2">
+            <span id="rt-value" class="text-4xl font-bold tabular-nums"></span>
+            <span id="rt-unit" class="text-lg font-medium text-gray-400">ms</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Table Selector -->
+      <div class="flex gap-2 mb-6 flex-wrap">
+        <span class="font-medium text-gray-700 self-center mr-2">Table:</span>
+        <div id="table-buttons" class="flex gap-2 flex-wrap"></div>
+      </div>
+
+      <!-- Data Table -->
+      <div class="bg-white rounded-lg shadow overflow-hidden">
+        <div id="loading" class="hidden p-8 text-center">
+          <div class="spinner mx-auto mb-2"></div>
+          <p class="text-gray-500">Loading data...</p>
+        </div>
+        <div id="table-container" class="overflow-x-auto">
+          <p class="p-8 text-center text-gray-400">Select a table to view data</p>
+        </div>
+      </div>
+
+      <!-- Pagination -->
+      <div id="pagination" class="hidden flex items-center justify-between mt-4 bg-white rounded-lg shadow p-4">
+        <div class="text-sm text-gray-600">
+          Showing <span id="show-start"></span>-<span id="show-end"></span> of <span id="show-total"></span> records
+        </div>
+        <div class="flex gap-2">
+          <button id="btn-prev" onclick="changePage(-1)" class="px-3 py-1 rounded border text-sm hover:bg-gray-50 disabled:opacity-50">Previous</button>
+          <span id="page-info" class="px-3 py-1 text-sm self-center"></span>
+          <button id="btn-next" onclick="changePage(1)" class="px-3 py-1 rounded border text-sm hover:bg-gray-50 disabled:opacity-50">Next</button>
+        </div>
+      </div>
+
+      <!-- Edit hint -->
+      <p class="text-xs text-gray-400 mt-2">Double-click a cell to edit. Press Enter to save, Escape to cancel.</p>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- TAB: Analytics Benchmark (OLTP vs OLAP)      -->
+    <!-- ============================================ -->
+    <div id="tab-analytics" class="hidden">
+
+      <!-- Intro -->
+      <div class="bg-white rounded-lg shadow p-6 mb-6">
+        <p class="text-gray-600 mb-2">
+          <strong>OLTP vs OLAP</strong> &mdash; each engine is designed for a different workload.
+          This benchmark runs transactional queries and analytical queries on both engines to compare where each excels.
+        </p>
+        <p class="text-sm text-gray-500">
+          <span class="font-medium text-green-700">Lakebase</span> = operational database for apps &amp; APIs (low-latency point lookups, CRUD).
+          <span class="font-medium text-blue-700">Lakehouse (DBSQL)</span> = analytical engine for BI &amp; data science (scan millions of rows, complex aggregations).
+        </p>
+      </div>
+
+      <!-- OLAP Table Setup -->
+      <div id="olap-setup" class="mb-6 bg-amber-50 border border-amber-200 rounded-lg shadow p-5">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-sm font-semibold text-amber-800">OLAP Dataset</span>
+              <span id="olap-badge" class="px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-700">Not created</span>
+            </div>
+            <p class="text-sm text-amber-700">
+              The OLAP queries need a <strong><span class="olap-size">5M</span>-row account_transactions</strong> table in both Unity Catalog and Lakebase.
+              Generated from 100K investor contributions &times; monthly periods.
+            </p>
+          </div>
+          <button id="btn-setup-olap" onclick="setupOlapTable()"
+            class="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700 transition-colors shrink-0 ml-4">
+            Generate Table
+          </button>
+        </div>
+        <div id="olap-setup-progress" class="hidden mt-3 flex items-center gap-2 text-sm text-amber-700">
+          <div class="spinner"></div> <span id="olap-setup-msg">Generating <span class="olap-size">5M</span> rows in both DBSQL and Lakebase (this may take a minute)...</span>
+        </div>
+      </div>
+
+      <!-- Run All Button -->
+      <div class="flex items-center gap-4 mb-6">
+        <button id="btn-run-all" onclick="runAllAnalytics()"
+          class="px-6 py-2.5 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center gap-2">
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          Run All Queries
+        </button>
+        <span id="run-progress" class="text-sm text-gray-500 hidden"></span>
+      </div>
+
+      <!-- ===== OLTP Section ===== -->
+      <div class="mb-8">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-1 h-8 bg-green-500 rounded-full"></div>
+          <div>
+            <h2 class="text-xl font-bold text-gray-900">OLTP Workload</h2>
+            <p class="text-sm text-gray-500">Transactional queries your apps run thousands of times per second. Low latency wins.</p>
+          </div>
+        </div>
+        <div id="oltp-queries" class="space-y-4"></div>
+
+        <!-- OLTP Summary -->
+        <div id="oltp-summary" class="hidden mt-4 bg-green-50 border border-green-200 rounded-lg p-4">
+          <div class="grid grid-cols-3 gap-4 text-center">
+            <div>
+              <div class="text-xs font-medium text-gray-500 uppercase mb-1">DBSQL Avg</div>
+              <div id="oltp-dbsql-avg" class="text-xl font-bold text-blue-600">--</div>
+            </div>
+            <div>
+              <div class="text-xs font-medium text-gray-500 uppercase mb-1">Lakebase Avg</div>
+              <div id="oltp-lakebase-avg" class="text-xl font-bold text-green-600">--</div>
+            </div>
+            <div>
+              <div class="text-xs font-medium text-gray-500 uppercase mb-1">Lakebase Speedup</div>
+              <div id="oltp-speedup" class="text-xl font-bold text-emerald-600">--</div>
+            </div>
+          </div>
+          <p class="text-xs text-green-700 text-center mt-2">Lakebase delivers consistent sub-100ms latency for transactional workloads.</p>
+        </div>
+      </div>
+
+      <!-- ===== OLAP Section ===== -->
+      <div class="mb-6">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-1 h-8 bg-blue-500 rounded-full"></div>
+          <div>
+            <h2 class="text-xl font-bold text-gray-900">OLAP Workload</h2>
+            <p class="text-sm text-gray-500">Analytical queries scanning millions of rows of historical data. Lakehouse is purpose-built for this.</p>
+          </div>
+        </div>
+        <div id="olap-queries" class="space-y-4"></div>
+
+        <!-- OLAP Summary -->
+        <div id="olap-summary" class="hidden mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div class="grid grid-cols-3 gap-4 text-center">
+            <div>
+              <div class="text-xs font-medium text-gray-500 uppercase mb-1">DBSQL Avg (<span class="olap-size">5M</span> rows)</div>
+              <div id="olap-dbsql-avg" class="text-xl font-bold text-blue-600">--</div>
+            </div>
+            <div>
+              <div class="text-xs font-medium text-gray-500 uppercase mb-1">Lakebase Avg (<span class="olap-size">5M</span> rows)</div>
+              <div id="olap-lakebase-avg" class="text-xl font-bold text-green-600">--</div>
+            </div>
+            <div>
+              <div class="text-xs font-medium text-gray-500 uppercase mb-1">Winner</div>
+              <div id="olap-winner" class="text-xl font-bold text-gray-900">--</div>
+            </div>
+          </div>
+          <p class="text-xs text-blue-700 text-center mt-2">At <span class="olap-size">5M</span> rows, Lakehouse's Photon engine and columnar storage start to show their advantage for analytical scans.</p>
+        </div>
+      </div>
+
+      <!-- Overall Takeaway -->
+      <div id="overall-takeaway" class="hidden bg-gray-900 text-white rounded-lg shadow p-6">
+        <h3 class="text-lg font-bold mb-2">Use each for what it's designed for</h3>
+        <div class="grid grid-cols-2 gap-6 text-sm">
+          <div>
+            <div class="flex items-center gap-2 mb-1">
+              <div class="w-3 h-3 rounded-full bg-green-400"></div>
+              <span class="font-semibold">Lakebase (Postgres)</span>
+            </div>
+            <p class="text-gray-300">Operational data &mdash; live registrant records, open investor complaints, examiner case notes. Your web apps and APIs query here. Sub-100ms latency, point lookups, CRUD operations.</p>
+          </div>
+          <div>
+            <div class="flex items-center gap-2 mb-1">
+              <div class="w-3 h-3 rounded-full bg-blue-400"></div>
+              <span class="font-semibold">Lakehouse (DBSQL)</span>
+            </div>
+            <p class="text-gray-300">Full data history &mdash; years of transactions, all events, raw logs. Your analysts and BI tools query here. Scans terabytes with Photon distributed compute.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // === Tab Switching ===
+    function switchTab(tab) {
+      document.getElementById('tab-browser').classList.toggle('hidden', tab !== 'browser');
+      document.getElementById('tab-analytics').classList.toggle('hidden', tab !== 'analytics');
+      const activeClass = 'px-4 py-2 rounded-md text-sm font-medium bg-gray-900 text-white transition-colors';
+      const idleClass = 'px-4 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors';
+      document.getElementById('tab-btn-browser').className = tab === 'browser' ? activeClass : idleClass;
+      document.getElementById('tab-btn-analytics').className = tab === 'analytics' ? activeClass : idleClass;
+    }
+
+    // === Table Browser ===
+    let currentSource = 'dbsql_statement';
+    let currentTable = null;
+    let currentPage = 1;
+    let currentData = null;
+    const PAGE_SIZE = 10;
+
+    const SOURCE_BUTTONS = ['dbsql_statement', 'dbsql_connector', 'lakebase_pg', 'lakebase_dataapi'];
+    const SOURCE_COLORS = {
+      dbsql_statement:  { active: 'bg-blue-600 text-white shadow', idle: 'text-gray-600 hover:bg-gray-200' },
+      dbsql_connector:  { active: 'bg-blue-600 text-white shadow', idle: 'text-gray-600 hover:bg-gray-200' },
+      lakebase_pg:      { active: 'bg-green-600 text-white shadow', idle: 'text-gray-600 hover:bg-gray-200' },
+      lakebase_dataapi: { active: 'bg-green-600 text-white shadow', idle: 'text-gray-600 hover:bg-gray-200' },
+    };
+    const SOURCE_LABELS = {
+      dbsql_statement: 'DBSQL Statement API', dbsql_connector: 'DBSQL Connector',
+      lakebase_pg: 'Lakebase Postgres', lakebase_dataapi: 'Lakebase Data API',
+    };
+    const PK_MAP = {
+      account_types: 'account_type_id', advisors: 'advisor_id', investors: 'investor_id',
+      accounts: 'account_id', holdings: 'holding_id', beneficiaries: 'beneficiary_id',
+      kyc_profiles: 'kyc_id', contributions: 'contribution_id', complaints: 'complaint_id',
+      restitution_payments: 'payment_id'
+    };
+    const TABLES = [
+      'account_types', 'advisors', 'investors', 'accounts', 'holdings',
+      'beneficiaries', 'kyc_profiles', 'contributions', 'complaints', 'restitution_payments'
+    ];
+
+    function initBrowser() {
+      const container = document.getElementById('table-buttons');
+      TABLES.forEach(t => {
+        const btn = document.createElement('button');
+        btn.id = `tbl-${t}`;
+        btn.textContent = t.replace(/_/g, ' ');
+        btn.className = 'px-3 py-1.5 rounded-md text-sm border hover:bg-blue-50 transition-all capitalize';
+        btn.onclick = () => selectTable(t);
+        container.appendChild(btn);
+      });
+      setSource('dbsql_statement');
+    }
+
+    function setSource(src) {
+      currentSource = src;
+      SOURCE_BUTTONS.forEach(s => {
+        const btn = document.getElementById(`btn-${s}`);
+        const colors = SOURCE_COLORS[s];
+        btn.className = `px-3 py-2 rounded-md text-sm font-medium transition-all ${s === src ? colors.active : colors.idle}`;
+      });
+      if (currentTable) { currentPage = 1; loadData(); }
+    }
+
+    function getSourceColor() { return currentSource.startsWith('dbsql') ? 'blue' : 'green'; }
+
+    function showResponseTime(ms, label, isUpdate) {
+      const banner = document.getElementById('response-time-banner');
+      const color = getSourceColor();
+      banner.className = `mb-6 rounded-lg shadow p-5 bg-${color}-50 border border-${color}-200`;
+      document.getElementById('rt-label').textContent = isUpdate ? 'Update Response' : 'Query Response';
+      const srcBadge = document.getElementById('rt-source');
+      srcBadge.textContent = SOURCE_LABELS[currentSource];
+      srcBadge.className = `text-sm font-medium px-2 py-0.5 rounded-full bg-${color}-100 text-${color}-700`;
+      document.getElementById('rt-value').className = `text-4xl font-bold tabular-nums text-${color}-700`;
+      document.getElementById('rt-value').textContent = ms.toFixed(1);
+      banner.classList.remove('hidden');
+    }
+
+    function selectTable(table) {
+      currentTable = table;
+      currentPage = 1;
+      TABLES.forEach(t => {
+        const btn = document.getElementById(`tbl-${t}`);
+        btn.className = t === table
+          ? 'px-3 py-1.5 rounded-md text-sm border-2 border-blue-500 bg-blue-50 font-medium capitalize'
+          : 'px-3 py-1.5 rounded-md text-sm border hover:bg-blue-50 transition-all capitalize';
+      });
+      loadData();
+    }
+
+    async function loadData() {
+      const loading = document.getElementById('loading');
+      const container = document.getElementById('table-container');
+      loading.classList.remove('hidden');
+      container.innerHTML = '';
+      try {
+        const res = await fetch(`/api/data?table=${currentTable}&source=${currentSource}&page=${currentPage}&page_size=${PAGE_SIZE}`);
+        if (!res.ok) throw new Error(await res.text());
+        currentData = await res.json();
+        renderTable(currentData);
+        renderPagination(currentData);
+        showResponseTime(currentData.elapsed_ms, SOURCE_LABELS[currentSource], false);
+      } catch (err) {
+        container.innerHTML = `<p class="p-8 text-center text-red-500">Error: ${err.message}</p>`;
+      } finally { loading.classList.add('hidden'); }
+    }
+
+    function renderTable(data) {
+      const container = document.getElementById('table-container');
+      if (!data.rows.length) { container.innerHTML = '<p class="p-8 text-center text-gray-400">No data found</p>'; return; }
+      const pk = PK_MAP[data.table];
+      let html = '<table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr>';
+      data.columns.forEach(col => { html += `<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">${col}</th>`; });
+      html += '</tr></thead><tbody class="bg-white divide-y divide-gray-200">';
+      data.rows.forEach(row => {
+        html += '<tr class="hover:bg-gray-50">';
+        data.columns.forEach(col => {
+          const val = row[col] !== null && row[col] !== undefined ? row[col] : '';
+          const editable = col !== pk;
+          const pkVal = row[pk];
+          html += `<td class="px-4 py-2 text-sm text-gray-700 whitespace-nowrap ${editable ? 'cursor-pointer' : ''}"
+            ${editable ? `ondblclick="startEdit(this, '${data.table}', '${pk}', '${pkVal}', '${col}')"` : ''}>
+            ${formatValue(col, val)}</td>`;
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    function formatValue(col, val) {
+      if (val === '' || val === null) return '<span class="text-gray-300">&mdash;</span>';
+      if (typeof val === 'boolean') return val ? '&#10003;' : '&#10007;';
+      return String(val);
+    }
+
+    function startEdit(td, table, pkCol, pkVal, col) {
+      if (td.querySelector('input')) return;
+      const original = td.textContent.trim();
+      td.classList.add('editing');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = original === '\u2014' ? '' : original;
+      input.className = 'w-full px-1 py-0.5 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400';
+      input.onkeydown = async (e) => {
+        if (e.key === 'Enter') await saveEdit(td, table, pkCol, pkVal, col, input.value, original);
+        else if (e.key === 'Escape') { td.textContent = original; td.classList.remove('editing'); }
+      };
+      input.onblur = () => { setTimeout(() => { if (td.querySelector('input')) { td.textContent = original; td.classList.remove('editing'); } }, 200); };
+      td.textContent = '';
+      td.appendChild(input);
+      input.focus();
+      input.select();
+    }
+
+    async function saveEdit(td, table, pkCol, pkVal, col, newVal, original) {
+      td.innerHTML = '<div class="spinner mx-auto"></div>';
+      try {
+        const res = await fetch(`/api/update?source=${currentSource}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ table, pk_column: pkCol, pk_value: isNaN(pkVal) ? pkVal : Number(pkVal), column: col, value: newVal === '' ? null : (isNaN(newVal) ? newVal : Number(newVal)) })
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const result = await res.json();
+        td.textContent = newVal || '\u2014';
+        td.classList.remove('editing');
+        showResponseTime(result.elapsed_ms, SOURCE_LABELS[currentSource], true);
+      } catch (err) { td.textContent = original; td.classList.remove('editing'); alert('Update failed: ' + err.message); }
+    }
+
+    function renderPagination(data) {
+      const pag = document.getElementById('pagination');
+      const totalPages = Math.ceil(data.total_count / data.page_size);
+      if (totalPages <= 1 && data.total_count <= PAGE_SIZE) { pag.classList.add('hidden'); return; }
+      pag.classList.remove('hidden');
+      const start = (data.page - 1) * data.page_size + 1;
+      const end = Math.min(data.page * data.page_size, data.total_count);
+      document.getElementById('show-start').textContent = start;
+      document.getElementById('show-end').textContent = end;
+      document.getElementById('show-total').textContent = data.total_count.toLocaleString();
+      document.getElementById('page-info').textContent = `Page ${data.page} of ${totalPages}`;
+      document.getElementById('btn-prev').disabled = data.page <= 1;
+      document.getElementById('btn-next').disabled = data.page >= totalPages;
+    }
+
+    function changePage(delta) { currentPage += delta; loadData(); }
+
+    // === Analytics Benchmark ===
+    let analyticsQueries = [];
+    let analyticsResults = {};
+    let olapReady = false;
+
+    const CATEGORY_COLORS = {
+      'OLTP': 'bg-green-100 text-green-700',
+      'Full Scan': 'bg-blue-100 text-blue-700',
+      'Aggregation': 'bg-indigo-100 text-indigo-700',
+      'JOIN + Scan': 'bg-purple-100 text-purple-700',
+    };
+
+    async function initAnalytics() {
+      try {
+        const [qRes, olapRes] = await Promise.all([
+          fetch('/api/analytics/queries'),
+          fetch('/api/analytics/olap-status'),
+        ]);
+        const qData = await qRes.json();
+        const olapData = await olapRes.json();
+        analyticsQueries = qData.queries;
+        renderAnalyticsCards();
+        updateOlapSetup(olapData);
+      } catch (err) {
+        console.error('Failed to init analytics:', err);
+      }
+    }
+
+    function updateOlapSetup(data) {
+      if (data.label) { OLAP_LABEL = data.label; document.querySelectorAll('.olap-size').forEach(e => e.textContent = data.label); }
+      const badge = document.getElementById('olap-badge');
+      const btn = document.getElementById('btn-setup-olap');
+      const setupDiv = document.getElementById('olap-setup');
+      const dbsqlCount = data.dbsql_count || data.row_count || 0;
+      const lbCount = data.lakebase_count || 0;
+      if (data.exists && dbsqlCount > 0 && lbCount > 0) {
+        olapReady = true;
+        badge.textContent = `DBSQL: ${(dbsqlCount / 1000000).toFixed(1)}M \u00b7 Lakebase: ${(lbCount / 1000000).toFixed(1)}M`;
+        badge.className = 'px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700';
+        btn.textContent = 'Ready';
+        btn.disabled = true;
+        btn.className = 'px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium opacity-75 cursor-default shrink-0 ml-4';
+        setupDiv.className = 'mb-6 bg-green-50 border border-green-200 rounded-lg shadow p-5';
+        analyticsQueries.filter(q => q.section === 'olap').forEach(q => {
+          const b = document.getElementById(`run-btn-${q.id}`);
+          if (b) { b.disabled = false; b.title = ''; }
+        });
+      } else {
+        olapReady = false;
+        if (dbsqlCount > 0 || lbCount > 0) {
+          badge.textContent = `Partial: DBSQL ${dbsqlCount > 0 ? '\u2713' : '\u2717'} Lakebase ${lbCount > 0 ? '\u2713' : '\u2717'}`;
+        }
+        analyticsQueries.filter(q => q.section === 'olap').forEach(q => {
+          const b = document.getElementById(`run-btn-${q.id}`);
+          if (b) { b.disabled = true; b.title = 'Generate the OLAP tables first'; }
+        });
+      }
+    }
+
+    async function setupOlapTable() {
+      const btn = document.getElementById('btn-setup-olap');
+      const progress = document.getElementById('olap-setup-progress');
+      btn.disabled = true;
+      btn.textContent = 'Generating...';
+      progress.classList.remove('hidden');
+
+      try {
+        const res = await fetch('/api/analytics/setup-olap', { method: 'POST' });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        updateOlapSetup({ exists: true, row_count: data.row_count, dbsql_count: data.dbsql_count, lakebase_count: data.lakebase_count });
+        document.getElementById('olap-setup-msg').textContent =
+          `Done! DBSQL: ${(data.dbsql_count / 1000000).toFixed(1)}M rows, Lakebase: ${(data.lakebase_count / 1000000).toFixed(1)}M rows` +
+          (data.elapsed_ms ? ` (${(data.elapsed_ms / 1000).toFixed(1)}s)` : '');
+        setTimeout(() => progress.classList.add('hidden'), 5000);
+      } catch (err) {
+        document.getElementById('olap-setup-msg').textContent = `Error: ${err.message}`;
+        btn.disabled = false;
+        btn.textContent = 'Retry';
+      }
+    }
+
+    function renderAnalyticsCards() {
+      const oltpContainer = document.getElementById('oltp-queries');
+      const olapContainer = document.getElementById('olap-queries');
+      const oltpQueries = analyticsQueries.filter(q => q.section === 'oltp');
+      const olapQueries = analyticsQueries.filter(q => q.section === 'olap');
+
+      oltpContainer.innerHTML = oltpQueries.map((q, i) => renderQueryCard(q, i + 1, false)).join('');
+      olapContainer.innerHTML = olapQueries.map((q, i) => renderQueryCard(q, oltpQueries.length + i + 1, true)).join('');
+    }
+
+    function renderQueryCard(q, num, isOlap) {
+      return `
+        <div id="card-${q.id}" class="bg-white rounded-lg shadow overflow-hidden">
+          <div class="p-5">
+            <div class="flex items-center justify-between mb-1">
+              <div class="flex items-center gap-3">
+                <span class="text-lg font-semibold text-gray-900">${num}. ${q.name}</span>
+                <span class="px-2 py-0.5 text-xs font-medium rounded-full ${CATEGORY_COLORS[q.category] || 'bg-gray-100 text-gray-700'}">${q.category}</span>
+                ${isOlap ? `<span class="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-50 text-blue-600">${OLAP_LABEL} rows</span>` : ''}
+              </div>
+              <button id="run-btn-${q.id}" onclick="runSingleAnalytics('${q.id}')"
+                ${isOlap && !olapReady ? 'disabled title="Generate the OLAP table first"' : ''}
+                class="px-3 py-1.5 text-sm font-medium border rounded-md hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Run</button>
+            </div>
+            <p class="text-sm text-gray-500 mb-3">${q.description}</p>
+            <div id="loading-${q.id}" class="hidden flex items-center gap-2 text-sm text-gray-500">
+              <div class="spinner"></div> Running on both engines${isOlap ? ` (${OLAP_LABEL} rows each)` : ''}...
+            </div>
+            <div id="result-${q.id}" class="hidden"></div>
+          </div>
+        </div>`;
+    }
+
+    async function runSingleAnalytics(queryId) {
+      const loading = document.getElementById(`loading-${queryId}`);
+      const result = document.getElementById(`result-${queryId}`);
+      const btn = document.getElementById(`run-btn-${queryId}`);
+
+      loading.classList.remove('hidden');
+      result.classList.add('hidden');
+      btn.disabled = true;
+      btn.textContent = '...';
+
+      try {
+        const res = await fetch(`/api/analytics/run?query_id=${queryId}`, { method: 'POST' });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        analyticsResults[queryId] = data;
+        renderAnalyticsResult(queryId, data);
+        updateSectionSummaries();
+      } catch (err) {
+        result.innerHTML = `<p class="text-red-500 text-sm">Error: ${err.message}</p>`;
+        result.classList.remove('hidden');
+      } finally {
+        loading.classList.add('hidden');
+        btn.disabled = false;
+        btn.textContent = 'Run';
+        // Re-disable OLAP buttons if table not ready
+        const q = analyticsQueries.find(q => q.id === queryId);
+        if (q && q.section === 'olap' && !olapReady) btn.disabled = true;
+      }
+    }
+
+    function formatMs(ms) {
+      if (!ms) return '--';
+      if (ms >= 1000) return (ms / 1000).toFixed(1) + 's';
+      return ms.toFixed(0) + 'ms';
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function renderAnalyticsResult(queryId, data) {
+      const result = document.getElementById(`result-${queryId}`);
+      const dbsql = data.results.dbsql;
+      const lb = data.results.lakebase;
+
+      const maxMs = Math.max(dbsql.elapsed_ms || 1, (lb && lb.elapsed_ms) || 1);
+      const dbsqlPct = Math.max((dbsql.elapsed_ms / maxMs) * 100, 3);
+      const lbPct = lb ? Math.max((lb.elapsed_ms / maxMs) * 100, 3) : 0;
+
+      let speedupHtml = '';
+      if (lb && !dbsql.error && !lb.error && dbsql.elapsed_ms > 0 && lb.elapsed_ms > 0) {
+        const ratio = dbsql.elapsed_ms / lb.elapsed_ms;
+        if (ratio > 1.05) {
+          speedupHtml = `<span class="inline-flex items-center gap-1 text-sm font-semibold text-green-700">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+            Lakebase ${ratio.toFixed(1)}&times; faster</span>`;
+        } else if (ratio < 0.95) {
+          speedupHtml = `<span class="inline-flex items-center gap-1 text-sm font-semibold text-blue-700">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+            DBSQL ${(1/ratio).toFixed(1)}&times; faster</span>`;
+        } else {
+          speedupHtml = '<span class="text-sm text-gray-500">Similar speed</span>';
+        }
+      }
+
+      const rowCount = (lb && lb.row_count) || dbsql.row_count || 0;
+      const isOlap = data.section === 'olap';
+
+      result.innerHTML = `
+        <div class="space-y-2.5 mb-3">
+          <div class="flex items-center gap-3">
+            <span class="w-20 text-sm font-medium text-blue-700 shrink-0">DBSQL (JDBC)</span>
+            <div class="flex-1 bg-gray-100 rounded-full h-7 overflow-hidden">
+              <div class="h-full bg-blue-500 rounded-full transition-all duration-700 ease-out" style="width: ${dbsqlPct}%"></div>
+            </div>
+            <span class="w-20 text-sm font-mono text-right font-medium">${dbsql.error ? 'Error' : formatMs(dbsql.elapsed_ms)}</span>
+          </div>
+          ${lb ? `
+          <div class="flex items-center gap-3">
+            <span class="w-20 text-sm font-medium text-green-700 shrink-0">Lakebase (PG)</span>
+            <div class="flex-1 bg-gray-100 rounded-full h-7 overflow-hidden">
+              <div class="h-full bg-green-500 rounded-full transition-all duration-700 ease-out" style="width: ${lbPct}%"></div>
+            </div>
+            <span class="w-20 text-sm font-mono text-right font-medium">${lb.error ? 'Error' : formatMs(lb.elapsed_ms)}</span>
+          </div>` : ''}
+        </div>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-4">
+            ${speedupHtml}
+            <span class="text-xs text-gray-400">${rowCount} row${rowCount !== 1 ? 's' : ''} returned${isOlap ? ` \u00b7 ${OLAP_LABEL}-row table` : ''}</span>
+          </div>
+          <div class="flex gap-3">
+            <button onclick="toggleSection('sql-${queryId}')" class="text-xs text-blue-600 hover:underline">Show SQL</button>
+            <button onclick="toggleSection('results-${queryId}')" class="text-xs text-blue-600 hover:underline">Show Results</button>
+          </div>
+        </div>
+        <div id="sql-${queryId}" class="hidden mt-3 space-y-2">
+          <div><div class="text-xs font-medium text-blue-700 mb-1">DBSQL (JDBC):</div><pre class="text-xs font-mono bg-blue-50 p-3 rounded overflow-x-auto whitespace-pre-wrap">${escapeHtml(dbsql.sql)}</pre></div>
+          ${lb ? `<div><div class="text-xs font-medium text-green-700 mb-1">Lakebase (PG):</div><pre class="text-xs font-mono bg-green-50 p-3 rounded overflow-x-auto whitespace-pre-wrap">${escapeHtml(lb.sql)}</pre></div>` : ''}
+        </div>
+        <div id="results-${queryId}" class="hidden mt-3 overflow-x-auto">${renderResultTable((lb && lb.columns.length) ? lb : dbsql)}</div>
+      `;
+      result.classList.remove('hidden');
+    }
+
+    function renderResultTable(data) {
+      if (!data.rows || !data.rows.length) return '<p class="text-sm text-gray-400">No results</p>';
+      let html = '<table class="min-w-full divide-y divide-gray-200 text-xs"><thead class="bg-gray-50"><tr>';
+      data.columns.forEach(col => { html += `<th class="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider">${escapeHtml(col)}</th>`; });
+      html += '</tr></thead><tbody class="divide-y divide-gray-100">';
+      data.rows.forEach(row => {
+        html += '<tr class="hover:bg-gray-50">';
+        data.columns.forEach(col => {
+          const val = row[col] !== null && row[col] !== undefined ? row[col] : '--';
+          html += `<td class="px-3 py-1.5 text-gray-700 whitespace-nowrap">${escapeHtml(String(val))}</td>`;
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      return html;
+    }
+
+    function toggleSection(id) {
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle('hidden');
+    }
+
+    function updateSectionSummaries() {
+      // OLTP summary
+      const oltpResults = Object.values(analyticsResults).filter(r => r.section === 'oltp');
+      const oltpSummary = document.getElementById('oltp-summary');
+      if (oltpResults.length > 0) {
+        oltpSummary.classList.remove('hidden');
+        let dbsqlTotal = 0, lbTotal = 0, valid = 0;
+        for (const r of oltpResults) {
+          const d = r.results.dbsql, l = r.results.lakebase;
+          if (d && l && !d.error && !l.error && d.elapsed_ms > 0 && l.elapsed_ms > 0) {
+            dbsqlTotal += d.elapsed_ms; lbTotal += l.elapsed_ms; valid++;
+          }
+        }
+        document.getElementById('oltp-dbsql-avg').textContent = valid ? formatMs(dbsqlTotal / valid) : '--';
+        document.getElementById('oltp-lakebase-avg').textContent = valid ? formatMs(lbTotal / valid) : '--';
+        document.getElementById('oltp-speedup').textContent = valid && lbTotal > 0 ? (dbsqlTotal / lbTotal).toFixed(1) + '\u00d7' : '--';
+      }
+
+      // OLAP summary
+      const olapResults = Object.values(analyticsResults).filter(r => r.section === 'olap');
+      const olapSummary = document.getElementById('olap-summary');
+      if (olapResults.length > 0) {
+        olapSummary.classList.remove('hidden');
+        let dbsqlTotal = 0, lbTotal = 0, valid = 0;
+        for (const r of olapResults) {
+          const d = r.results.dbsql, l = r.results.lakebase;
+          if (d && l && !d.error && !l.error && d.elapsed_ms > 0 && l.elapsed_ms > 0) {
+            dbsqlTotal += d.elapsed_ms; lbTotal += l.elapsed_ms; valid++;
+          }
+        }
+        document.getElementById('olap-dbsql-avg').textContent = valid ? formatMs(dbsqlTotal / valid) : '--';
+        document.getElementById('olap-lakebase-avg').textContent = valid ? formatMs(lbTotal / valid) : '--';
+        if (valid && dbsqlTotal > 0 && lbTotal > 0) {
+          const ratio = dbsqlTotal / lbTotal;
+          const winner = document.getElementById('olap-winner');
+          if (ratio < 0.95) {
+            winner.textContent = `DBSQL ${(1/ratio).toFixed(1)}\u00d7`;
+            winner.className = 'text-xl font-bold text-blue-600';
+          } else if (ratio > 1.05) {
+            winner.textContent = `Lakebase ${ratio.toFixed(1)}\u00d7`;
+            winner.className = 'text-xl font-bold text-green-600';
+          } else {
+            winner.textContent = 'Tie';
+            winner.className = 'text-xl font-bold text-gray-600';
+          }
+        }
+      }
+
+      // Overall takeaway
+      if (oltpResults.length > 0 && olapResults.length > 0) {
+        document.getElementById('overall-takeaway').classList.remove('hidden');
+      }
+    }
+
+    async function runAllAnalytics() {
+      const btn = document.getElementById('btn-run-all');
+      const progress = document.getElementById('run-progress');
+
+      btn.disabled = true;
+      btn.classList.add('opacity-50');
+      progress.classList.remove('hidden');
+      analyticsResults = {};
+
+      // Reset displays
+      analyticsQueries.forEach(q => {
+        const r = document.getElementById(`result-${q.id}`);
+        if (r) { r.classList.add('hidden'); r.innerHTML = ''; }
+      });
+      document.getElementById('oltp-summary').classList.add('hidden');
+      document.getElementById('olap-summary').classList.add('hidden');
+      document.getElementById('overall-takeaway').classList.add('hidden');
+
+      // Run OLTP queries first
+      const oltpQueries = analyticsQueries.filter(q => q.section === 'oltp');
+      for (let i = 0; i < oltpQueries.length; i++) {
+        progress.textContent = `OLTP ${i + 1}/${oltpQueries.length}: ${oltpQueries[i].name}...`;
+        await runSingleAnalytics(oltpQueries[i].id);
+      }
+
+      // Run OLAP queries if table is ready
+      const olapQueries = analyticsQueries.filter(q => q.section === 'olap');
+      if (olapReady) {
+        for (let i = 0; i < olapQueries.length; i++) {
+          progress.textContent = `OLAP ${i + 1}/${olapQueries.length}: ${olapQueries[i].name}...`;
+          await runSingleAnalytics(olapQueries[i].id);
+        }
+      } else {
+        progress.textContent = 'OLTP complete. Generate the OLAP table to run analytical queries.';
+        setTimeout(() => progress.classList.add('hidden'), 5000);
+        btn.disabled = false;
+        btn.classList.remove('opacity-50');
+        return;
+      }
+
+      btn.disabled = false;
+      btn.classList.remove('opacity-50');
+      progress.textContent = 'All queries complete!';
+      setTimeout(() => progress.classList.add('hidden'), 4000);
+    }
+
+    // === Init ===
+    initBrowser();
+    initAnalytics();
+  </script>
+</body>
+</html>

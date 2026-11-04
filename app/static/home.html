@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ontario Securities Commission - Lakebase Demos</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-5xl mx-auto px-4 py-12">
+    <!-- Header -->
+    <div class="text-center mb-12">
+      <p class="text-sm font-semibold tracking-widest text-indigo-600 uppercase">Ontario Securities Commission &middot; Registrant Oversight</p>
+      <h1 class="text-5xl font-bold text-gray-900 mt-2">Lakebase Demos: Shipping the Next Applications Safely</h1>
+      <p class="text-xl text-gray-500 mt-3">Advisors, investor accounts, KYC and complaints on Lakebase: branch-based schema migrations, automated CI/CD deployment, district-level row security and point-in-time recovery</p>
+    </div>
+
+    <!-- Demo Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+      <!-- Lakebase as Code (DABs) -->
+      <a href="/lakebase-as-code"
+        class="group bg-white rounded-xl shadow-md hover:shadow-xl border border-gray-200 hover:border-green-400 transition-all p-6 flex flex-col">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+            <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+            </svg>
+          </div>
+          <h2 class="text-lg font-semibold text-gray-900 group-hover:text-green-600 transition-colors">Lakebase as Code (DABs)</h2>
+        </div>
+        <p class="text-sm text-gray-500 flex-1">Deploy your own Lakebase project, or a Lakebase project with a Databricks App bound to it, from a Declarative Automation Bundle. Pick your names, review the YAML, watch the deploy, then destroy it.</p>
+        <div class="mt-4 flex items-center text-sm font-medium text-green-600 group-hover:text-green-700">
+          Launch demo
+          <svg class="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+          </svg>
+        </div>
+      </a>
+
+      <!-- DBSQL vs Lakebase -->
+      <a href="/dbsql-vs-lakebase"
+        class="group bg-white rounded-xl shadow-md hover:shadow-xl border border-gray-200 hover:border-green-400 transition-all p-6 flex flex-col">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+            <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+          </div>
+          <h2 class="text-lg font-semibold text-gray-900 group-hover:text-green-600 transition-colors">Lakehouse vs Lakebase</h2>
+        </div>
+        <p class="text-sm text-gray-500 flex-1">Compare performance across 4 data access methods using an OSC registrant-oversight dataset (~570K records: advisors, investor accounts, complaints). Browse and edit data via DBSQL Statement API, DBSQL Connector, Lakebase Postgres, and Lakebase Data API.</p>
+        <div class="mt-4 flex items-center text-sm font-medium text-green-600 group-hover:text-green-700">
+          Launch demo
+          <svg class="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+          </svg>
+        </div>
+      </a>
+
+      <!-- Branching Workflows -->
+      <a href="/branching"
+        class="group bg-white rounded-xl shadow-md hover:shadow-xl border border-gray-200 hover:border-green-400 transition-all p-6 flex flex-col">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+            <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7C5 4 4 5 4 7z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6M12 9v6"/>
+            </svg>
+          </div>
+          <h2 class="text-lg font-semibold text-gray-900 group-hover:text-green-600 transition-colors">Branching Workflows</h2>
+        </div>
+        <p class="text-sm text-gray-500 flex-1">Create isolated dev branches from production, make bulk changes, and compare side by side. Git-like branching with copy-on-write storage.</p>
+        <div class="mt-4 flex items-center text-sm font-medium text-green-600 group-hover:text-green-700">
+          Launch demo
+          <svg class="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+          </svg>
+        </div>
+      </a>
+
+      <!-- Reverse ETL -->
+      <a href="/reverse-etl"
+        class="group bg-white rounded-xl shadow-md hover:shadow-xl border border-gray-200 hover:border-green-400 transition-all p-6 flex flex-col">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+            <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+          </div>
+          <h2 class="text-lg font-semibold text-gray-900 group-hover:text-green-600 transition-colors">Reverse ETL</h2>
+        </div>
+        <p class="text-sm text-gray-500 flex-1">Push data from Delta Lake to Lakebase Postgres. Add rows to Delta, sync them to Postgres, and compare side by side.</p>
+        <div class="mt-4 flex items-center text-sm font-medium text-green-600 group-hover:text-green-700">
+          Launch demo
+          <svg class="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+          </svg>
+        </div>
+      </a>
+
+      <!-- Scale-to-Zero -->
+      <a href="/scale-to-zero"
+        class="group bg-white rounded-xl shadow-md hover:shadow-xl border border-gray-200 hover:border-green-400 transition-all p-6 flex flex-col">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+            <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+            </svg>
+          </div>
+          <h2 class="text-lg font-semibold text-gray-900 group-hover:text-green-600 transition-colors">Scale-to-Zero</h2>
+        </div>
+        <p class="text-sm text-gray-500 flex-1">Configure inactivity timeouts, observe compute suspend and wake-up, and compare warm vs cold-start query latencies.</p>
+        <div class="mt-4 flex items-center text-sm font-medium text-green-600 group-hover:text-green-700">
+          Launch demo
+          <svg class="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+          </svg>
+        </div>
+      </a>
+
+      <!-- Row-Level Security -->
+      <a href="/row-level-security"
+        class="group bg-white rounded-xl shadow-md hover:shadow-xl border border-gray-200 hover:border-green-400 transition-all p-6 flex flex-col">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+            <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+            </svg>
+          </div>
+          <h2 class="text-lg font-semibold text-gray-900 group-hover:text-green-600 transition-colors">Row-Level Security</h2>
+        </div>
+        <p class="text-sm text-gray-500 flex-1">Switch between regional manager personas and see how PostgreSQL RLS policies filter rows by district office — same query, different results.</p>
+        <div class="mt-4 flex items-center text-sm font-medium text-green-600 group-hover:text-green-700">
+          Launch demo
+          <svg class="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+          </svg>
+        </div>
+      </a>
+
+      <!-- Point-in-Time Restore -->
+      <a href="/point-in-time-restore"
+        class="group bg-white rounded-xl shadow-md hover:shadow-xl border border-gray-200 hover:border-green-400 transition-all p-6 flex flex-col">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+            <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+          </div>
+          <h2 class="text-lg font-semibold text-gray-900 group-hover:text-green-600 transition-colors">Point-in-Time Restore</h2>
+        </div>
+        <p class="text-sm text-gray-500 flex-1">Simulate a disaster, then recover data by branching from a past timestamp. Proves data is never lost within the retention window.</p>
+        <div class="mt-4 flex items-center text-sm font-medium text-green-600 group-hover:text-green-700">
+          Launch demo
+          <svg class="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+          </svg>
+        </div>
+      </a>
+
+      <!-- CI/CD Schema Migration -->
+      <a href="/cicd"
+        class="group bg-white rounded-xl shadow-md hover:shadow-xl border border-gray-200 hover:border-green-400 transition-all p-6 flex flex-col">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+            <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+            </svg>
+          </div>
+          <h2 class="text-lg font-semibold text-gray-900 group-hover:text-green-600 transition-colors">CI/CD Schema Migration</h2>
+        </div>
+        <p class="text-sm text-gray-500 flex-1">Propagate schema changes through dev, staging, and production branches with changelog-based migrations and rollback support.</p>
+        <div class="mt-4 flex items-center text-sm font-medium text-green-600 group-hover:text-green-700">
+          Launch demo
+          <svg class="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+          </svg>
+        </div>
+      </a>
+
+      <!-- Autoscaling Under Load -->
+      <a href="/autoscale"
+        class="group bg-white rounded-xl shadow-md hover:shadow-xl border border-gray-200 hover:border-green-400 transition-all p-6 flex flex-col">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+            <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+            </svg>
+          </div>
+          <h2 class="text-lg font-semibold text-gray-900 group-hover:text-green-600 transition-colors">Autoscaling Under Load</h2>
+        </div>
+        <p class="text-sm text-gray-500 flex-1">Fire waves of concurrent queries and watch latency improve as Lakebase scales compute from 1 to 8 CU. Real-time scatter chart with baseline comparison.</p>
+        <div class="mt-4 flex items-center text-sm font-medium text-green-600 group-hover:text-green-700">
+          Launch demo
+          <svg class="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+          </svg>
+        </div>
+      </a>
+
+      <!-- ORM (SQLAlchemy) -->
+      <a href="/orm"
+        class="group bg-white rounded-xl shadow-md hover:shadow-xl border border-gray-200 hover:border-green-400 transition-all p-6 flex flex-col">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+            <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/>
+            </svg>
+          </div>
+          <h2 class="text-lg font-semibold text-gray-900 group-hover:text-green-600 transition-colors">ORM (SQLAlchemy)</h2>
+        </div>
+        <p class="text-sm text-gray-500 flex-1">Use SQLAlchemy with Lakebase Postgres. Auto-reflect tables, browse with filters, navigate foreign-key relationships, and compare ORM vs raw SQL performance.</p>
+        <div class="mt-4 flex items-center text-sm font-medium text-green-600 group-hover:text-green-700">
+          Launch demo
+          <svg class="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+          </svg>
+        </div>
+      </a>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="mt-12 pb-8 flex items-center justify-center gap-3 text-sm text-gray-400">
+      <span>Author: <strong class="text-gray-500">Karthik Subbarao</strong></span>
+      <span>&middot;</span>
+      <a href="https://github.com/Karthikeya108/lakebase_demos" target="_blank" class="flex items-center gap-1 text-gray-400 hover:text-gray-600 transition-colors">
+        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+</body>
+</html>

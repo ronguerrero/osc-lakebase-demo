@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Autoscaling Under Load - Lakebase Autoscaling</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    .spinner { border: 4px solid #e5e7eb; border-top: 4px solid #6366f1; border-radius: 50%; width: 36px; height: 36px; animation: spin 0.8s linear infinite; display: inline-block; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .pulse { animation: pulse-glow 2s ease-in-out infinite; }
+    @keyframes pulse-glow { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-7xl mx-auto px-4 py-6">
+    <!-- Header -->
+    <div class="mb-6">
+      <div class="flex items-center gap-3">
+        <a href="/" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+        </a>
+        <h1 class="text-3xl font-bold text-gray-900">Autoscaling Under Load</h1>
+      </div>
+      <p class="text-gray-500 mt-1 ml-8">Fire concurrent queries and watch latency improve as Lakebase scales compute dynamically</p>
+    </div>
+
+    <!-- How it works -->
+    <div class="mb-6 bg-white rounded-lg shadow p-4">
+      <div class="flex items-center gap-2 mb-2">
+        <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <span class="text-sm font-medium text-gray-700">How it works</span>
+      </div>
+      <div class="text-sm text-gray-500 space-y-1">
+        <p>Configure the autoscaling range (1-8 CU), then fire waves of concurrent queries — <strong class="text-red-500">heavy</strong> (4-table JOIN + aggregation), <strong class="text-amber-500">medium</strong> (2-table JOIN), and <strong class="text-green-500">light</strong> (single-table GROUP BY).</p>
+        <p>Under burst load, Lakebase automatically scales compute up. Watch per-query latency decrease in real-time as more CUs come online.</p>
+      </div>
+    </div>
+
+    <!-- Top row: Config + Endpoint Status -->
+    <div class="grid grid-cols-3 gap-4 mb-6">
+      <!-- Endpoint Status -->
+      <div class="bg-white rounded-lg shadow p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold text-gray-700">Endpoint Status</h2>
+          <span id="ep-state" class="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">--</span>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <span class="text-[10px] text-gray-400 uppercase">Min CU</span>
+            <p id="ep-min-cu" class="text-2xl font-bold text-gray-800">--</p>
+          </div>
+          <div>
+            <span class="text-[10px] text-gray-400 uppercase">Max CU</span>
+            <p id="ep-max-cu" class="text-2xl font-bold text-gray-800">--</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Configure Autoscaling -->
+      <div class="bg-white rounded-lg shadow p-4">
+        <h2 class="text-sm font-semibold text-gray-700 mb-3">Configure Autoscaling</h2>
+        <div class="flex items-end gap-3">
+          <div class="flex-1">
+            <label class="text-[10px] text-gray-400 uppercase">Min CU</label>
+            <select id="cfg-min" class="w-full border rounded px-2 py-1.5 text-sm">
+              <option value="0.5">0.5</option>
+              <option value="1" selected>1</option>
+              <option value="2">2</option>
+              <option value="4">4</option>
+            </select>
+          </div>
+          <div class="flex-1">
+            <label class="text-[10px] text-gray-400 uppercase">Max CU</label>
+            <select id="cfg-max" class="w-full border rounded px-2 py-1.5 text-sm">
+              <option value="2">2</option>
+              <option value="4">4</option>
+              <option value="8" selected>8</option>
+            </select>
+          </div>
+          <button onclick="configureAutoscaling()" id="btn-configure" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium transition-colors">
+            Apply
+          </button>
+        </div>
+      </div>
+
+      <!-- Baseline -->
+      <div class="bg-white rounded-lg shadow p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold text-gray-700">Baseline Latency</h2>
+          <button onclick="runBaseline()" id="btn-baseline" class="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-xs font-medium transition-colors">
+            Run Baseline
+          </button>
+        </div>
+        <div class="grid grid-cols-3 gap-2">
+          <div>
+            <span class="text-[10px] text-red-400 uppercase font-medium">Heavy</span>
+            <p id="bl-heavy" class="text-lg font-mono font-bold text-gray-800">--</p>
+          </div>
+          <div>
+            <span class="text-[10px] text-amber-400 uppercase font-medium">Medium</span>
+            <p id="bl-medium" class="text-lg font-mono font-bold text-gray-800">--</p>
+          </div>
+          <div>
+            <span class="text-[10px] text-green-400 uppercase font-medium">Light</span>
+            <p id="bl-light" class="text-lg font-mono font-bold text-gray-800">--</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Load Test Controls -->
+    <div class="bg-white rounded-lg shadow p-4 mb-6">
+      <div class="flex items-center gap-6">
+        <h2 class="text-sm font-semibold text-gray-700">Load Test</h2>
+        <div class="flex items-center gap-2">
+          <label class="text-xs text-gray-500">Concurrency</label>
+          <select id="lt-concurrency" class="border rounded px-2 py-1 text-sm">
+            <option value="5">5</option>
+            <option value="10" selected>10</option>
+            <option value="20">20</option>
+            <option value="30">30</option>
+            <option value="50">50</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-2">
+          <label class="text-xs text-gray-500">Waves</label>
+          <select id="lt-waves" class="border rounded px-2 py-1 text-sm">
+            <option value="3">3</option>
+            <option value="5" selected>5</option>
+            <option value="10">10</option>
+            <option value="15">15</option>
+            <option value="20">20</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-2">
+          <label class="text-xs text-gray-500">Query Mix</label>
+          <select id="lt-mix" class="border rounded px-2 py-1 text-sm">
+            <option value="heavy,medium,light">All types</option>
+            <option value="heavy">Heavy only</option>
+            <option value="heavy,medium">Heavy + Medium</option>
+            <option value="light">Light only</option>
+          </select>
+        </div>
+        <div class="flex gap-2 ml-auto">
+          <button onclick="startLoadTest()" id="btn-start" class="px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors">
+            Start Load Test
+          </button>
+          <button onclick="stopLoadTest()" id="btn-stop" disabled class="px-5 py-2 border border-gray-300 text-gray-500 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+            Stop
+          </button>
+        </div>
+      </div>
+
+      <!-- Progress bar -->
+      <div id="progress-section" class="hidden mt-4">
+        <div class="flex items-center justify-between mb-1">
+          <span id="progress-label" class="text-xs text-gray-500">Running...</span>
+          <span id="progress-count" class="text-xs font-mono text-gray-600">0 / 0</span>
+        </div>
+        <div class="w-full bg-gray-200 rounded-full h-2">
+          <div id="progress-bar" class="bg-indigo-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats Row -->
+    <div id="stats-row" class="hidden grid grid-cols-4 gap-4 mb-6">
+      <div class="bg-white rounded-lg shadow p-4 text-center">
+        <span class="text-[10px] text-gray-400 uppercase">Total Queries</span>
+        <p id="stat-total" class="text-3xl font-bold text-gray-800">0</p>
+      </div>
+      <div class="bg-white rounded-lg shadow p-4 text-center">
+        <span class="text-[10px] text-gray-400 uppercase">Avg Latency</span>
+        <p id="stat-avg" class="text-3xl font-bold text-indigo-600">--</p>
+      </div>
+      <div class="bg-white rounded-lg shadow p-4 text-center">
+        <span class="text-[10px] text-gray-400 uppercase">Min Latency</span>
+        <p id="stat-min" class="text-3xl font-bold text-green-600">--</p>
+      </div>
+      <div class="bg-white rounded-lg shadow p-4 text-center">
+        <span class="text-[10px] text-gray-400 uppercase">Max Latency</span>
+        <p id="stat-max" class="text-3xl font-bold text-red-600">--</p>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="grid grid-cols-2 gap-4 mb-6">
+      <!-- Scatter: latency over time -->
+      <div class="bg-white rounded-lg shadow p-4">
+        <h2 class="text-sm font-semibold text-gray-700 mb-3">Query Latency Over Time</h2>
+        <canvas id="scatter-chart" height="250"></canvas>
+      </div>
+      <!-- Bar: avg latency by wave -->
+      <div class="bg-white rounded-lg shadow p-4">
+        <h2 class="text-sm font-semibold text-gray-700 mb-3">Throughput &amp; Avg Latency per Wave</h2>
+        <canvas id="wave-chart" height="250"></canvas>
+      </div>
+    </div>
+
+    <!-- Query Log -->
+    <div class="bg-white rounded-lg shadow p-4 mb-6">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-semibold text-gray-700">Query Log</h2>
+        <span id="log-count" class="text-xs text-gray-400"></span>
+      </div>
+      <div id="query-log" class="max-h-64 overflow-y-auto text-xs font-mono space-y-0.5"></div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+      <div class="bg-white rounded-xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3">
+        <div class="spinner"></div>
+        <p id="loading-text" class="text-gray-700 font-medium">Loading...</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const TYPE_COLORS = { heavy: '#ef4444', medium: '#f59e0b', light: '#22c55e' };
+    let allResults = [];
+    let nextSince = 0;
+    let pollInterval = null;
+    let scatterChart = null;
+    let waveChart = null;
+    let baselines = {};
+
+    function showLoading(msg) { document.getElementById('loading').classList.remove('hidden'); document.getElementById('loading-text').textContent = msg; }
+    function hideLoading() { document.getElementById('loading').classList.add('hidden'); }
+
+    // ---- Endpoint Status ----
+    async function loadEndpointStatus() {
+      try {
+        const res = await fetch('/api/autoscale/endpoint-status');
+        const data = await res.json();
+        const stateEl = document.getElementById('ep-state');
+        stateEl.textContent = data.state.replace('EndpointState.', '');
+        if (data.state.includes('ACTIVE') || data.state.includes('IDLE')) {
+          stateEl.className = 'px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700';
+        } else if (data.state.includes('SUSPENDED')) {
+          stateEl.className = 'px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700';
+        } else {
+          stateEl.className = 'px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600';
+        }
+        document.getElementById('ep-min-cu').textContent = data.min_cu;
+        document.getElementById('ep-max-cu').textContent = data.max_cu;
+      } catch (e) { console.error('Status error:', e); }
+    }
+
+    // ---- Configure ----
+    async function configureAutoscaling() {
+      const minCu = document.getElementById('cfg-min').value;
+      const maxCu = document.getElementById('cfg-max').value;
+      if (parseFloat(minCu) > parseFloat(maxCu)) {
+        alert('Min CU cannot exceed Max CU');
+        return;
+      }
+      showLoading('Configuring autoscaling range...');
+      document.getElementById('btn-configure').disabled = true;
+      try {
+        const res = await fetch(`/api/autoscale/configure?min_cu=${minCu}&max_cu=${maxCu}`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Failed');
+        await loadEndpointStatus();
+      } catch (err) {
+        alert('Configure failed: ' + err.message);
+      } finally {
+        hideLoading();
+        document.getElementById('btn-configure').disabled = false;
+      }
+    }
+
+    // ---- Baseline ----
+    async function runBaseline() {
+      showLoading('Running baseline queries (1 of each type)...');
+      document.getElementById('btn-baseline').disabled = true;
+      try {
+        const res = await fetch('/api/autoscale/baseline', { method: 'POST' });
+        const data = await res.json();
+        baselines = data.baselines;
+        for (const [type, bl] of Object.entries(baselines)) {
+          const el = document.getElementById(`bl-${type}`);
+          if (bl.success) {
+            el.textContent = `${bl.elapsed_ms.toFixed(0)}ms`;
+          } else {
+            el.textContent = 'ERR';
+            el.title = bl.error;
+          }
+        }
+      } catch (err) {
+        alert('Baseline failed: ' + err.message);
+      } finally {
+        hideLoading();
+        document.getElementById('btn-baseline').disabled = false;
+      }
+    }
+
+    // ---- Load Test ----
+    async function startLoadTest() {
+      const concurrency = document.getElementById('lt-concurrency').value;
+      const waves = document.getElementById('lt-waves').value;
+      const mix = document.getElementById('lt-mix').value;
+
+      allResults = [];
+      nextSince = 0;
+      initCharts();
+
+      document.getElementById('btn-start').disabled = true;
+      document.getElementById('btn-stop').disabled = false;
+      document.getElementById('progress-section').classList.remove('hidden');
+      document.getElementById('stats-row').classList.remove('hidden');
+
+      try {
+        const res = await fetch(`/api/autoscale/start?concurrency=${concurrency}&waves=${waves}&mix=${encodeURIComponent(mix)}`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Failed');
+
+        document.getElementById('progress-label').textContent = `Running ${data.total_queries} queries (${concurrency} concurrent x ${waves} waves)...`;
+
+        // Start polling
+        pollInterval = setInterval(pollResults, 1000);
+      } catch (err) {
+        alert('Start failed: ' + err.message);
+        document.getElementById('btn-start').disabled = false;
+        document.getElementById('btn-stop').disabled = true;
+      }
+    }
+
+    async function stopLoadTest() {
+      try {
+        await fetch('/api/autoscale/stop', { method: 'POST' });
+      } catch (e) {}
+      document.getElementById('btn-stop').disabled = true;
+    }
+
+    async function pollResults() {
+      try {
+        const res = await fetch(`/api/autoscale/results?since=${nextSince}`);
+        const data = await res.json();
+
+        if (data.results.length > 0) {
+          allResults.push(...data.results);
+          nextSince = data.next_since;
+          updateCharts();
+          updateStats();
+          updateLog(data.results);
+        }
+
+        // Progress
+        const pct = data.total_planned > 0 ? (data.total_done / data.total_planned * 100) : 0;
+        document.getElementById('progress-bar').style.width = `${pct}%`;
+        document.getElementById('progress-count').textContent = `${data.total_done} / ${data.total_planned}`;
+
+        if (!data.running) {
+          clearInterval(pollInterval);
+          pollInterval = null;
+          document.getElementById('progress-label').textContent = `Completed: ${data.total_done} queries`;
+          document.getElementById('btn-start').disabled = false;
+          document.getElementById('btn-stop').disabled = true;
+          loadEndpointStatus();
+        }
+      } catch (e) {
+        console.error('Poll error:', e);
+      }
+    }
+
+    // ---- Charts ----
+    function initCharts() {
+      // Scatter chart
+      if (scatterChart) scatterChart.destroy();
+      const scatterCtx = document.getElementById('scatter-chart').getContext('2d');
+      scatterChart = new Chart(scatterCtx, {
+        type: 'scatter',
+        data: {
+          datasets: [
+            { label: 'Heavy', data: [], backgroundColor: TYPE_COLORS.heavy, pointRadius: 4 },
+            { label: 'Medium', data: [], backgroundColor: TYPE_COLORS.medium, pointRadius: 4 },
+            { label: 'Light', data: [], backgroundColor: TYPE_COLORS.light, pointRadius: 4 },
+          ],
+        },
+        options: {
+          responsive: true,
+          animation: false,
+          scales: {
+            x: { title: { display: true, text: 'Time (seconds)' } },
+            y: { title: { display: true, text: 'Latency (ms)' }, beginAtZero: true },
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(0)}ms @ ${ctx.parsed.x.toFixed(1)}s`
+              }
+            }
+          }
+        },
+      });
+
+      // Wave chart
+      if (waveChart) waveChart.destroy();
+      const waveCtx = document.getElementById('wave-chart').getContext('2d');
+      waveChart = new Chart(waveCtx, {
+        type: 'bar',
+        data: {
+          labels: [],
+          datasets: [
+            { label: 'Avg Latency (ms)', data: [], backgroundColor: '#6366f1', yAxisID: 'y' },
+            { label: 'Queries/sec', data: [], type: 'line', borderColor: '#f59e0b', backgroundColor: '#f59e0b', yAxisID: 'y1', tension: 0.3, pointRadius: 4 },
+          ],
+        },
+        options: {
+          responsive: true,
+          animation: false,
+          scales: {
+            y: { title: { display: true, text: 'Avg Latency (ms)' }, beginAtZero: true, position: 'left' },
+            y1: { title: { display: true, text: 'Queries/sec' }, beginAtZero: true, position: 'right', grid: { drawOnChartArea: false } },
+          },
+        },
+      });
+    }
+
+    function updateCharts() {
+      // Scatter
+      const heavy = [], medium = [], light = [];
+      allResults.forEach(r => {
+        const pt = { x: r.timestamp, y: r.elapsed_ms };
+        if (r.query_type === 'heavy') heavy.push(pt);
+        else if (r.query_type === 'medium') medium.push(pt);
+        else light.push(pt);
+      });
+      scatterChart.data.datasets[0].data = heavy;
+      scatterChart.data.datasets[1].data = medium;
+      scatterChart.data.datasets[2].data = light;
+
+      // Add baseline lines via annotation (simplified: just update y-axis max)
+      scatterChart.update();
+
+      // Wave chart: group by wave (bucket by ~concurrency queries)
+      const concurrency = parseInt(document.getElementById('lt-concurrency').value) || 10;
+      const waves = [];
+      for (let i = 0; i < allResults.length; i += concurrency) {
+        const wave = allResults.slice(i, i + concurrency);
+        const avgLatency = wave.reduce((s, r) => s + r.elapsed_ms, 0) / wave.length;
+        const minTs = Math.min(...wave.map(r => r.timestamp));
+        const maxTs = Math.max(...wave.map(r => r.timestamp));
+        const duration = Math.max(maxTs - minTs, 0.1);
+        const qps = wave.length / duration;
+        waves.push({ avgLatency, qps, label: `Wave ${waves.length + 1}` });
+      }
+
+      waveChart.data.labels = waves.map(w => w.label);
+      waveChart.data.datasets[0].data = waves.map(w => Math.round(w.avgLatency));
+      waveChart.data.datasets[1].data = waves.map(w => Math.round(w.qps * 10) / 10);
+      waveChart.update();
+    }
+
+    function updateStats() {
+      const successful = allResults.filter(r => r.success);
+      document.getElementById('stat-total').textContent = allResults.length;
+      if (successful.length > 0) {
+        const times = successful.map(r => r.elapsed_ms);
+        const avg = times.reduce((a, b) => a + b, 0) / times.length;
+        document.getElementById('stat-avg').textContent = `${avg.toFixed(0)}ms`;
+        document.getElementById('stat-min').textContent = `${Math.min(...times).toFixed(0)}ms`;
+        document.getElementById('stat-max').textContent = `${Math.max(...times).toFixed(0)}ms`;
+      }
+    }
+
+    function updateLog(newResults) {
+      const log = document.getElementById('query-log');
+      document.getElementById('log-count').textContent = `${allResults.length} queries`;
+      newResults.forEach(r => {
+        const color = r.success ? TYPE_COLORS[r.query_type] : '#999';
+        const status = r.success ? `${r.elapsed_ms.toFixed(0)}ms` : `ERR: ${r.error}`;
+        const div = document.createElement('div');
+        div.className = 'flex items-center gap-2';
+        div.innerHTML = `
+          <span class="w-12 text-right text-gray-400">${r.timestamp.toFixed(1)}s</span>
+          <span class="w-2 h-2 rounded-full" style="background:${color}"></span>
+          <span class="w-14" style="color:${color}">${r.query_type}</span>
+          <span class="${r.success ? 'text-gray-700' : 'text-red-500'}">${status}</span>
+        `;
+        log.appendChild(div);
+      });
+      log.scrollTop = log.scrollHeight;
+    }
+
+    // ---- Init ----
+    loadEndpointStatus();
+    setInterval(loadEndpointStatus, 10000); // refresh every 10s
+  </script>
+</body>
+</html>

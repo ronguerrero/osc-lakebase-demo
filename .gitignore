@@ -1,0 +1,9 @@
+.ai-dev-kit/
+.claude/
+.cursor/
+.vscode/
+.github/skills/
+.mcp.json
+claude_instructions.md
+__pycache__/
+.databricks/

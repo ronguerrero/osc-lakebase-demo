@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Point-in-Time Restore Demo - Lakebase Autoscaling</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #f59e0b; border-radius: 50%; width: 20px; height: 20px; animation: spin 0.8s linear infinite; display: inline-block; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-7xl mx-auto px-4 py-6">
+    <!-- Header -->
+    <div class="mb-6">
+      <div class="flex items-center gap-3">
+        <a href="/" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+        </a>
+        <h1 class="text-3xl font-bold text-gray-900">Point-in-Time Restore Demo</h1>
+      </div>
+      <p class="text-gray-500 mt-1 ml-8">Simulate a disaster, then recover data by branching from a point in time</p>
+      <button onclick="resetDemo()" id="btn-reset" class="mt-2 ml-8 px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-sm font-medium transition-colors">
+        Reset Demo
+      </button>
+    </div>
+
+    <!-- How it works -->
+    <div class="mb-6 bg-white rounded-lg shadow p-4">
+      <div class="flex items-center gap-2 mb-2">
+        <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <span class="text-sm font-medium text-gray-700">How it works</span>
+      </div>
+      <div class="text-sm text-gray-500 space-y-1">
+        <p>Lakebase automatically retains history for up to <strong>35 days</strong>. No checkpoints or snapshots needed — you can branch from <em>any</em> past timestamp within the retention window.</p>
+        <p class="font-mono text-xs bg-gray-50 p-2 rounded border">CREATE BRANCH restored FROM production AT TIMESTAMP '2026-03-09 14:30:00'</p>
+        <p>The restored branch is a full copy-on-write snapshot — reads are instant, and production is unaffected.</p>
+      </div>
+    </div>
+
+    <!-- 4-step workflow -->
+    <div class="grid grid-cols-4 gap-4 mb-6">
+
+      <!-- Step 1: Disaster -->
+      <div id="step-1" class="bg-white rounded-lg shadow p-4 border-2 border-red-400">
+        <div class="flex items-center gap-2 mb-3">
+          <div class="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-red-700 text-sm font-bold">1</div>
+          <h3 class="font-semibold text-gray-800 text-sm">Simulate Disaster</h3>
+        </div>
+        <p class="text-xs text-gray-500 mb-2">Wipe email & phone for all advisors in a district office — an accidental bulk UPDATE.</p>
+        <select id="disaster-region" class="w-full mb-2 px-2 py-1.5 border rounded text-sm">
+          <option value="Toronto">Toronto</option>
+          <option value="Ottawa">Ottawa</option>
+          <option value="Hamilton">Hamilton</option>
+          <option value="London">London</option>
+          <option value="Kingston">Kingston</option>
+          <option value="Sudbury">Sudbury</option>
+          <option value="Windsor">Windsor</option>
+          <option value="Mississauga">Mississauga</option>
+        </select>
+        <div id="disaster-info" class="hidden mb-2 p-2 bg-red-50 rounded border border-red-200">
+          <p class="text-xs text-red-700" id="disaster-detail"></p>
+          <p class="text-xs text-red-600 mt-1"><span class="font-medium">Restore point:</span> <span id="checkpoint-ts" class="font-mono"></span></p>
+        </div>
+        <button id="btn-disaster" onclick="simulateDisaster()" class="w-full px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+          Corrupt Region Data
+        </button>
+      </div>
+
+      <!-- Step 2: Restore Branch -->
+      <div id="step-2" class="bg-white rounded-lg shadow p-4 border-2 border-gray-200 opacity-60">
+        <div class="flex items-center gap-2 mb-3">
+          <div class="w-7 h-7 rounded-full bg-green-100 flex items-center justify-center text-green-700 text-sm font-bold">2</div>
+          <h3 class="font-semibold text-gray-800 text-sm">Restore from Past</h3>
+        </div>
+        <p class="text-xs text-gray-500 mb-3">Create a branch from <strong>5 min before</strong> the disaster. Any timestamp in the retention window works.</p>
+        <div id="restore-info" class="hidden mb-3 p-2 bg-green-50 rounded border border-green-200">
+          <p class="text-xs text-green-700" id="restore-detail"></p>
+        </div>
+        <button id="btn-restore" onclick="restoreFromPast()" disabled class="w-full px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+          Restore Branch
+        </button>
+      </div>
+
+      <!-- Step 3: Recover Production -->
+      <div id="step-3" class="bg-white rounded-lg shadow p-4 border-2 border-gray-200 opacity-60">
+        <div class="flex items-center gap-2 mb-3">
+          <div class="w-7 h-7 rounded-full bg-purple-100 flex items-center justify-center text-purple-700 text-sm font-bold">3</div>
+          <h3 class="font-semibold text-gray-800 text-sm">Recover Production</h3>
+        </div>
+        <p class="text-xs text-gray-500 mb-3">Copy intact data from the restored branch back to production to fix the corruption.</p>
+        <div id="recover-info" class="hidden mb-3 p-2 bg-purple-50 rounded border border-purple-200">
+          <p class="text-xs text-purple-700" id="recover-detail"></p>
+        </div>
+        <button id="btn-recover" onclick="recoverProduction()" disabled class="w-full px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+          Recover Production
+        </button>
+      </div>
+
+      <!-- Step 4: Cleanup -->
+      <div id="step-4" class="bg-white rounded-lg shadow p-4 border-2 border-gray-200 opacity-60">
+        <div class="flex items-center gap-2 mb-3">
+          <div class="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-sm font-bold">4</div>
+          <h3 class="font-semibold text-gray-800 text-sm">Clean Up</h3>
+        </div>
+        <p class="text-xs text-gray-500 mb-3">Delete the restored branch. Resets the demo for another run.</p>
+        <div id="cleanup-info" class="hidden mb-3 p-2 bg-blue-50 rounded border border-blue-200">
+          <p class="text-xs text-blue-700" id="cleanup-detail"></p>
+        </div>
+        <button id="btn-cleanup" onclick="cleanup()" disabled class="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+          Clean Up & Reset
+        </button>
+      </div>
+    </div>
+
+    <!-- Single production view (shown on load and after disaster) -->
+    <div id="single-view" class="hidden mb-6">
+      <div>
+        <div id="single-header" class="bg-gray-700 text-white rounded-t-lg px-4 py-2 flex items-center justify-between">
+          <span id="single-title" class="font-medium">Production Data</span>
+          <div class="flex items-center gap-2">
+            <span id="single-count" class="text-sm opacity-80"></span>
+            <span id="single-time" class="text-sm opacity-80"></span>
+          </div>
+        </div>
+        <div class="bg-white rounded-b-lg shadow overflow-x-auto">
+          <div id="single-table"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Side-by-side comparison (shown after restore) -->
+    <div id="comparison" class="hidden grid grid-cols-2 gap-4 mb-6">
+      <!-- Production -->
+      <div>
+        <div id="prod-header" class="bg-red-600 text-white rounded-t-lg px-4 py-2 flex items-center justify-between">
+          <span class="font-medium">Production (Corrupted)</span>
+          <div class="flex items-center gap-2">
+            <span id="prod-count" class="text-sm opacity-80"></span>
+            <span id="prod-time" class="text-sm opacity-80"></span>
+          </div>
+        </div>
+        <div class="bg-white rounded-b-lg shadow overflow-x-auto">
+          <div id="prod-table"></div>
+        </div>
+      </div>
+      <!-- Restored -->
+      <div>
+        <div class="bg-green-600 text-white rounded-t-lg px-4 py-2 flex items-center justify-between">
+          <span class="font-medium">Restored Branch (Pre-Disaster)</span>
+          <div class="flex items-center gap-2">
+            <span id="restored-count" class="text-sm opacity-80"></span>
+            <span id="restored-time" class="text-sm opacity-80"></span>
+          </div>
+        </div>
+        <div class="bg-white rounded-b-lg shadow overflow-x-auto">
+          <div id="restored-table"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    <div id="pagination" class="hidden flex items-center justify-center gap-4 bg-white rounded-lg shadow p-3 mb-6">
+      <button id="btn-prev" onclick="changePage(-1)" class="px-3 py-1 rounded border text-sm hover:bg-gray-50 disabled:opacity-50">Previous</button>
+      <span id="page-info" class="text-sm text-gray-600"></span>
+      <button id="btn-next" onclick="changePage(1)" class="px-3 py-1 rounded border text-sm hover:bg-gray-50 disabled:opacity-50">Next</button>
+    </div>
+
+    <!-- Loading -->
+    <div id="loading" class="hidden p-8 text-center">
+      <div class="spinner mx-auto mb-2"></div>
+      <p id="loading-text" class="text-gray-500">Loading...</p>
+    </div>
+  </div>
+
+  <script>
+    let currentPage = 1;
+    const PAGE_SIZE = 15;
+    let state = {};
+    let viewMode = 'single'; // 'single' or 'comparison'
+
+    function showLoading(msg) {
+      document.getElementById('loading').classList.remove('hidden');
+      document.getElementById('loading-text').textContent = msg;
+    }
+    function hideLoading() {
+      document.getElementById('loading').classList.add('hidden');
+    }
+
+    const stepColors = { 1: 'border-red-400', 2: 'border-green-400', 3: 'border-purple-400', 4: 'border-blue-400' };
+
+    function activateStep(stepNum) {
+      for (let i = 1; i <= 4; i++) {
+        const el = document.getElementById(`step-${i}`);
+        if (i <= stepNum) {
+          el.classList.remove('opacity-60', 'border-gray-200');
+          el.classList.add(stepColors[i]);
+        } else {
+          el.classList.add('opacity-60');
+          Object.values(stepColors).forEach(c => el.classList.remove(c));
+          if (!el.classList.contains('border-gray-200')) el.classList.add('border-gray-200');
+        }
+      }
+    }
+
+    function showSingleView() {
+      viewMode = 'single';
+      document.getElementById('single-view').classList.remove('hidden');
+      document.getElementById('comparison').classList.add('hidden');
+    }
+
+    function showComparisonView() {
+      viewMode = 'comparison';
+      document.getElementById('single-view').classList.add('hidden');
+      document.getElementById('comparison').classList.remove('hidden');
+    }
+
+    async function loadProductionData() {
+      showLoading('Loading production data...');
+      try {
+        const res = await fetch(`/api/pitr/compare?page=${currentPage}&page_size=${PAGE_SIZE}`);
+        const data = await res.json();
+
+        if (viewMode === 'single') {
+          renderTable('single', data.production, !state.disaster_done || state.recovered);
+          document.getElementById('single-count').textContent = `${data.production.total_count} rows`;
+          document.getElementById('single-time').textContent = `${data.production.elapsed_ms.toFixed(1)} ms`;
+
+          if (state.recovered) {
+            document.getElementById('single-header').className = 'bg-green-700 text-white rounded-t-lg px-4 py-2 flex items-center justify-between';
+            document.getElementById('single-title').textContent = 'Production (Recovered)';
+          } else if (state.disaster_done) {
+            document.getElementById('single-header').className = 'bg-red-600 text-white rounded-t-lg px-4 py-2 flex items-center justify-between';
+            document.getElementById('single-title').textContent = 'Production (Corrupted)';
+          } else {
+            document.getElementById('single-header').className = 'bg-gray-700 text-white rounded-t-lg px-4 py-2 flex items-center justify-between';
+            document.getElementById('single-title').textContent = 'Production Data — advisors table';
+          }
+          showSingleView();
+        } else {
+          renderTable('prod', data.production, false);
+          document.getElementById('prod-count').textContent = `${data.production.total_count} rows`;
+          document.getElementById('prod-time').textContent = `${data.production.elapsed_ms.toFixed(1)} ms`;
+
+          renderTable('restored', data.restored, true);
+          document.getElementById('restored-count').textContent = `${data.restored.total_count} rows`;
+          document.getElementById('restored-time').textContent = `${data.restored.elapsed_ms.toFixed(1)} ms`;
+
+          showComparisonView();
+        }
+
+        // Pagination
+        const maxTotal = Math.max(data.production.total_count, data.restored.total_count || 0);
+        const totalPages = Math.ceil(maxTotal / PAGE_SIZE);
+        const pag = document.getElementById('pagination');
+        if (totalPages > 1) {
+          pag.classList.remove('hidden');
+          document.getElementById('page-info').textContent = `Page ${currentPage} of ${totalPages}`;
+          document.getElementById('btn-prev').disabled = currentPage <= 1;
+          document.getElementById('btn-next').disabled = currentPage >= totalPages;
+        } else {
+          pag.classList.add('hidden');
+        }
+      } catch (err) {
+        console.error('Failed to load data:', err);
+      } finally {
+        hideLoading();
+      }
+    }
+
+    async function init() {
+      const res = await fetch('/api/pitr/status');
+      state = await res.json();
+
+      if (state.disaster_done) {
+        document.getElementById('disaster-detail').textContent = state.disaster_detail || 'Disaster applied';
+        if (state.checkpoint_ts) {
+          document.getElementById('checkpoint-ts').textContent = state.checkpoint_ts;
+        }
+        document.getElementById('disaster-info').classList.remove('hidden');
+        document.getElementById('btn-disaster').disabled = true;
+        document.getElementById('disaster-region').disabled = true;
+      }
+
+      if (!state.disaster_done) {
+        activateStep(1);
+        viewMode = 'single';
+        loadProductionData();
+      } else if (!state.restored_branch) {
+        activateStep(2);
+        document.getElementById('btn-restore').disabled = false;
+        viewMode = 'single';
+        loadProductionData();
+      } else if (!state.recovered) {
+        activateStep(3);
+        document.getElementById('btn-recover').disabled = false;
+        viewMode = 'comparison';
+        loadProductionData();
+      } else {
+        activateStep(4);
+        document.getElementById('btn-cleanup').disabled = false;
+        viewMode = 'single';
+        loadProductionData();
+      }
+    }
+
+    async function simulateDisaster() {
+      const region = document.getElementById('disaster-region').value;
+      if (!confirm(`This will NULL out email & phone for all "${region}" advisors in production. Proceed?`)) return;
+
+      showLoading(`Corrupting ${region} advisor data...`);
+      document.getElementById('btn-disaster').disabled = true;
+      try {
+        const res = await fetch(`/api/pitr/disaster?region=${region}`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Failed');
+        document.getElementById('disaster-detail').textContent = data.message;
+        document.getElementById('checkpoint-ts').textContent = data.checkpoint_ts;
+        document.getElementById('disaster-info').classList.remove('hidden');
+        document.getElementById('disaster-region').disabled = true;
+        state.disaster_done = true;
+
+        activateStep(2);
+        document.getElementById('btn-restore').disabled = false;
+
+        // Reload to show corrupted data
+        currentPage = 1;
+        viewMode = 'single';
+        await loadProductionData();
+      } catch (err) {
+        alert('Disaster simulation failed: ' + err.message);
+        document.getElementById('btn-disaster').disabled = false;
+      } finally {
+        hideLoading();
+      }
+    }
+
+    async function restoreFromPast() {
+      showLoading('Creating restored branch from pre-disaster timestamp (this may take 30-60s)...');
+      document.getElementById('btn-restore').disabled = true;
+      try {
+        const res = await fetch('/api/pitr/restore', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Failed');
+        document.getElementById('restore-detail').textContent = data.message;
+        document.getElementById('restore-info').classList.remove('hidden');
+        state.restored_branch = true;
+
+        activateStep(3);
+        document.getElementById('btn-recover').disabled = false;
+
+        // Switch to side-by-side comparison
+        currentPage = 1;
+        viewMode = 'comparison';
+        await loadProductionData();
+      } catch (err) {
+        alert('Restore failed: ' + err.message);
+        document.getElementById('btn-restore').disabled = false;
+      } finally {
+        hideLoading();
+      }
+    }
+
+    function renderTable(prefix, data, healthy) {
+      const container = document.getElementById(`${prefix}-table`);
+      if (!data.rows || !data.rows.length) {
+        container.innerHTML = '<p class="p-4 text-center text-gray-400">No data</p>';
+        return;
+      }
+
+      const corruptedCols = ['email', 'phone'];
+      let html = '<table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr>';
+      data.columns.forEach(col => {
+        const highlight = !healthy && corruptedCols.includes(col);
+        html += `<th class="px-3 py-2 text-left text-xs font-medium ${highlight ? 'text-amber-600' : 'text-gray-500'} uppercase tracking-wider">${col}${highlight ? ' *' : ''}</th>`;
+      });
+      html += '</tr></thead><tbody class="divide-y divide-gray-200">';
+      data.rows.forEach(row => {
+        html += '<tr>';
+        data.columns.forEach(col => {
+          const val = row[col] !== null && row[col] !== undefined ? row[col] : '';
+          const isCorrupted = !healthy && corruptedCols.includes(col) && val === '';
+          if (isCorrupted) {
+            html += `<td class="px-3 py-1.5 text-xs whitespace-nowrap bg-red-50 text-red-400 font-medium">NULL</td>`;
+          } else {
+            html += `<td class="px-3 py-1.5 text-xs text-gray-700 whitespace-nowrap">${val === '' ? '<span class="text-gray-300">-</span>' : val}</td>`;
+          }
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    async function recoverProduction() {
+      showLoading('Copying intact data from restored branch to production...');
+      document.getElementById('btn-recover').disabled = true;
+      try {
+        const res = await fetch('/api/pitr/recover', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Failed');
+        document.getElementById('recover-detail').textContent = data.message;
+        document.getElementById('recover-info').classList.remove('hidden');
+        state.recovered = true;
+
+        activateStep(4);
+        document.getElementById('btn-cleanup').disabled = false;
+
+        // Reload to show recovered production data
+        viewMode = 'single';
+        document.getElementById('single-header').className = 'bg-green-700 text-white rounded-t-lg px-4 py-2 flex items-center justify-between';
+        document.getElementById('single-title').textContent = 'Production (Recovered)';
+        currentPage = 1;
+        await loadProductionData();
+      } catch (err) {
+        alert('Recovery failed: ' + err.message);
+        document.getElementById('btn-recover').disabled = false;
+      } finally {
+        hideLoading();
+      }
+    }
+
+    async function cleanup() {
+      if (!confirm('This will restore original data in production and delete the restored branch. Proceed?')) return;
+
+      showLoading('Cleaning up — restoring production data and deleting branch...');
+      document.getElementById('btn-cleanup').disabled = true;
+      try {
+        const res = await fetch('/api/pitr/cleanup', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Failed');
+        document.getElementById('cleanup-detail').textContent = data.message;
+        document.getElementById('cleanup-info').classList.remove('hidden');
+
+        document.getElementById('comparison').classList.add('hidden');
+        document.getElementById('pagination').classList.add('hidden');
+
+        setTimeout(async () => {
+          document.getElementById('disaster-info').classList.add('hidden');
+          document.getElementById('restore-info').classList.add('hidden');
+          document.getElementById('recover-info').classList.add('hidden');
+          document.getElementById('cleanup-info').classList.add('hidden');
+          document.getElementById('disaster-region').disabled = false;
+          document.getElementById('btn-disaster').disabled = false;
+          document.getElementById('btn-restore').disabled = true;
+          document.getElementById('btn-recover').disabled = true;
+          document.getElementById('btn-cleanup').disabled = true;
+          activateStep(1);
+          currentPage = 1;
+          state = {};
+          viewMode = 'single';
+          await loadProductionData();
+        }, 2000);
+      } catch (err) {
+        alert('Cleanup failed: ' + err.message);
+        document.getElementById('btn-cleanup').disabled = false;
+      } finally {
+        hideLoading();
+      }
+    }
+
+    async function resetDemo() {
+      showLoading('Resetting demo — restoring data and cleaning up branch...');
+      document.getElementById('btn-reset').disabled = true;
+      try {
+        const res = await fetch('/api/pitr/reset', { method: 'POST' });
+        const data = await res.json();
+
+        // Reset UI
+        document.getElementById('comparison').classList.add('hidden');
+        document.getElementById('pagination').classList.add('hidden');
+        document.getElementById('disaster-info').classList.add('hidden');
+        document.getElementById('restore-info').classList.add('hidden');
+        document.getElementById('recover-info').classList.add('hidden');
+        document.getElementById('cleanup-info').classList.add('hidden');
+        document.getElementById('disaster-region').disabled = false;
+        document.getElementById('btn-disaster').disabled = false;
+        document.getElementById('btn-restore').disabled = true;
+        document.getElementById('btn-recover').disabled = true;
+        document.getElementById('btn-cleanup').disabled = true;
+        activateStep(1);
+        currentPage = 1;
+        state = {};
+        viewMode = 'single';
+        await loadProductionData();
+      } catch (err) {
+        alert('Reset failed: ' + err.message);
+      } finally {
+        hideLoading();
+        document.getElementById('btn-reset').disabled = false;
+      }
+    }
+
+    function changePage(delta) {
+      currentPage += delta;
+      loadProductionData();
+    }
+
+    init();
+  </script>
+</body>
+</html>

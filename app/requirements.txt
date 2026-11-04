@@ -1,0 +1,7 @@
+fastapi>=0.115.0
+uvicorn>=0.32.0
+databricks-sdk>=0.81.0
+psycopg[binary]>=3.0
+httpx>=0.27.0
+databricks-sql-connector>=3.0.0
+sqlalchemy>=2.0

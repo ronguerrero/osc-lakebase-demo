@@ -1,0 +1,49 @@
+bundle:
+  name: osc-lakebase-demo
+
+include:
+  - resources/*.yml
+
+# Everything workspace-specific is a variable. Set them in the target you deploy (below), or per deploy
+# with `--var name=value` from the CLI.
+variables:
+  catalog:
+    description: Unity Catalog catalog for the Delta tables (must exist, or you need CREATE CATALOG)
+  schema:
+    description: Schema created in the catalog for the Delta tables
+    default: osc_demo
+  warehouse_name:
+    description: SQL warehouse the demos use; created (serverless, 2X-Small) if no warehouse has this name
+    default: osc-lakebase-demo-wh
+  lakebase_project:
+    description: Lakebase Autoscaling project id (created by the setup job)
+    default: osc-lakebase-demo
+  lakebase_db:
+    description: Postgres database created in the Lakebase project
+    default: osc_demo
+  app_name:
+    description: Databricks App name (unique per workspace; part of the app URL)
+    default: osc-lakebase-demo
+  olap_periods:
+    description: Size of the OLAP benchmark table, in 100K-row periods (50 = 5M rows, ~1.5 GB in Lakebase)
+    default: "50"
+  dab_max_deployments:
+    description: Max concurrent deployments from the "Lakebase as Code (DABs)" tile (each creates a Lakebase project)
+    default: "5"
+
+targets:
+  # Your own workspace. With no host here, the bundle deploys to the workspace you are in (Deploy button
+  # in the workspace) or to your CLI profile (databricks bundle deploy -t sandbox -p <profile>).
+  sandbox:
+    default: true
+    variables:
+      catalog: main   # <-- change to a catalog you can create schemas in
+
+  # Fallback for Databricks Free Edition: its only catalog and warehouse, and sized for its limits
+  # (512 MB per Lakebase project, 3 Lakebase projects per workspace, which the main demo uses one of).
+  free:
+    variables:
+      catalog: workspace
+      warehouse_name: Serverless Starter Warehouse
+      olap_periods: "10"
+      dab_max_deployments: "2"

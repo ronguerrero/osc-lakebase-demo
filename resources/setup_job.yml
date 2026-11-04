@@ -1,0 +1,40 @@
+resources:
+  jobs:
+    setup_osc_demo:
+      name: "OSC Lakebase Demo - Setup (${var.app_name})"
+      tasks:
+        - task_key: "01_setup_lakehouse"
+          description: "Create UC catalog/schema, SQL warehouse, and populate Delta tables"
+          notebook_task:
+            notebook_path: ../src/notebooks/01_setup_lakehouse.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              warehouse_name: ${var.warehouse_name}
+
+        - task_key: "02_setup_lakebase"
+          description: "Create Lakebase project, database, schema, and populate tables"
+          depends_on:
+            - task_key: "01_setup_lakehouse"
+          notebook_task:
+            notebook_path: ../src/notebooks/02_setup_lakebase.py
+            base_parameters:
+              lakebase_project: ${var.lakebase_project}
+              lakebase_db: ${var.lakebase_db}
+
+        - task_key: "03_configure_app"
+          description: "Create Lakebase role for app SP, grant access, and configure app env vars"
+          depends_on:
+            - task_key: "02_setup_lakebase"
+          notebook_task:
+            notebook_path: ../src/notebooks/03_grant_app_access.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              lakebase_project: ${var.lakebase_project}
+              lakebase_db: ${var.lakebase_db}
+              app_name: ${resources.apps.osc_app.name}
+              app_source_path: ${workspace.file_path}/app
+              warehouse_name: ${var.warehouse_name}
+              olap_periods: ${var.olap_periods}
+              dab_max_deployments: ${var.dab_max_deployments}
