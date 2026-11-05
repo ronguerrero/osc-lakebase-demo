@@ -139,8 +139,8 @@ print(f"Granted CAN_MANAGE on Lakebase project {project_name} to SP {sp_client_i
 
 # MAGIC %md
 # MAGIC ## Grant the App SP the SQL Warehouse and Unity Catalog Schema
-# MAGIC The DBSQL demos query, edit and create Delta tables as the app SP. USE CATALOG on the catalog is a one-time
-# MAGIC grant by a catalog manager if whoever runs this job does not own the catalog; see README.
+# MAGIC The DBSQL demos query, edit and create Delta tables as the app SP. Granting USE CATALOG needs MANAGE on
+# MAGIC (or ownership of) the catalog; without it this step prints the GRANT for a catalog owner to run.
 
 # COMMAND ----------
 
@@ -150,6 +150,13 @@ w.permissions.update(
     access_control_list=[AccessControlRequest(service_principal_name=sp_client_id,
                                               permission_level=PermissionLevel.CAN_USE)],
 )
+try:
+    spark.sql(f"GRANT USE CATALOG ON CATALOG {catalog} TO `{sp_client_id}`")
+    print(f"Granted USE CATALOG on {catalog} to SP {sp_client_id}")
+except Exception as e:
+    print(f"WARNING: could not grant USE CATALOG on {catalog} ({e}).\n"
+          f"The DBSQL demos need it. Ask a catalog owner to run:\n"
+          f"  GRANT USE CATALOG ON CATALOG {catalog} TO `{sp_client_id}`")
 spark.sql(f"GRANT USE SCHEMA, SELECT, MODIFY, CREATE TABLE ON SCHEMA {catalog}.{schema} TO `{sp_client_id}`")
 print(f"Granted CAN_USE on warehouse {warehouse_id} and schema privileges on {catalog}.{schema} to SP {sp_client_id}")
 
