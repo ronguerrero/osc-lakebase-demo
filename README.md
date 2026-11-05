@@ -111,6 +111,6 @@ The app looks up the SQL warehouse id and the Lakebase endpoint host by name whe
 
 ## Credits and disclaimer
 
-Based on [Karthik Subbarao's Lakebase demos](https://github.com/Karthikeya108/lakebase_demos), adapted for OSC.
+Authors: Karthik Subbarao and Ron Guerrero. Based on [Karthik Subbarao's Lakebase demos](https://github.com/Karthikeya108/lakebase_demos), adapted for OSC.
 
 This sample is meant to help you get started and is not production-ready. It comes with no guarantees or support; use it at your own risk. Parts of it were generated with AI.
