@@ -22,7 +22,7 @@ Everything is deployed with a Declarative Automation Bundle (DAB). You can deplo
 ## Requirements
 
 - A Databricks workspace with Unity Catalog, serverless compute, Databricks Apps and Lakebase Autoscaling
-- Permission to create apps, Lakebase projects and jobs, and to create a schema in your chosen catalog
+- Permission to create apps, Lakebase projects and jobs, and MANAGE on (or ownership of) the catalog you choose, so setup can create the schema and grant the app access to it
 - A SQL warehouse. By default the demos use the workspace's *Serverless Starter Warehouse*; if no warehouse has the configured name, the setup job creates a serverless 2X-Small one (this needs permission to create warehouses, and room under the workspace's warehouse limit)
 
 ## Deploy from the workspace (no local tools)
@@ -33,7 +33,7 @@ Everything is deployed with a Declarative Automation Bundle (DAB). You can deplo
 4. **Run setup**: in the same panel, run **OSC Lakebase Demo - Setup** (or find it under *Jobs & Pipelines*). It takes about 10-15 minutes and:
    - creates the schema, SQL warehouse (if needed) and the 10 Delta tables
    - creates the Lakebase project, database and Postgres tables with the same data
-   - grants the app's service principal what it needs (warehouse, schema, Lakebase project, Postgres roles and row-level security)
+   - grants the app's service principal what it needs (warehouse, catalog and schema, Lakebase project, Postgres roles and row-level security)
    - deploys and starts the app
 5. **Open the app** from *Compute > Apps*, or from the link at the end of the setup job's last task.
 
@@ -84,7 +84,7 @@ The `free` target already accounts for these; they explain why some demos behave
 
 ## Manual steps after setup
 
-- **USE CATALOG for the app**: if the person who ran setup doesn't own the catalog, a catalog owner runs `GRANT USE CATALOG ON CATALOG <catalog> TO \`<app service principal id>\`` once (the id is on the app's *Authorization* tab). Not needed on Free Edition or when you own the catalog.
+- **USE CATALOG for the app**: the setup job grants it when the person running setup has MANAGE on (or owns) the catalog. Otherwise the job prints a warning with the exact `GRANT USE CATALOG` statement for a catalog owner to run once.
 - **Lakebase Data API** (only for the Data API source in *Lakehouse vs Lakebase*):
   1. In the Lakebase project, open *Data API* for the `production` branch and database `osc_demo`, and click **Enable**.
   2. Under *Settings > Exposed schemas*, add `lakebase_demo` and save.
