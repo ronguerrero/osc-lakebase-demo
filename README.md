@@ -23,7 +23,7 @@ Everything is deployed with a Declarative Automation Bundle (DAB). You can deplo
 
 - A Databricks workspace with Unity Catalog, serverless compute, Databricks Apps and Lakebase Autoscaling
 - Permission to create apps, Lakebase projects and jobs, and to create a schema in your chosen catalog
-- A SQL warehouse, or permission to create one (the setup job creates a serverless 2X-Small warehouse if none has the configured name)
+- A SQL warehouse. By default the demos use the workspace's *Serverless Starter Warehouse*; if no warehouse has the configured name, the setup job creates a serverless 2X-Small one (this needs permission to create warehouses, and room under the workspace's warehouse limit)
 
 ## Deploy from the workspace (no local tools)
 
@@ -59,7 +59,7 @@ All workspace-specific settings are bundle variables in `databricks.yml`:
 |----------|---------|---------|
 | `catalog` | *(set per target)* | Catalog for the Delta tables. It must exist, or you need CREATE CATALOG |
 | `schema` | `osc_demo` | Schema created in that catalog |
-| `warehouse_name` | `osc-lakebase-demo-wh` | SQL warehouse to use; created if no warehouse has this name |
+| `warehouse_name` | `Serverless Starter Warehouse` | SQL warehouse to use (shared with other work in the workspace); created if no warehouse has this name |
 | `lakebase_project` | `osc-lakebase-demo` | Lakebase project id |
 | `lakebase_db` | `osc_demo` | Postgres database in the project |
 | `app_name` | `osc-lakebase-demo` | App name (unique per workspace) |
@@ -71,7 +71,7 @@ If several people deploy into the **same** workspace, each one should set their 
 ### Targets
 
 - **`sandbox`** (default): your own workspace. It has no host, so it deploys to the workspace you are in, or to your CLI profile. Set `catalog`.
-- **`free`**: fallback for [Databricks Free Edition](https://docs.databricks.com/getting-started/free-edition). Uses the `workspace` catalog and the *Serverless Starter Warehouse*, and sizes the demo for Free Edition limits.
+- **`free`**: fallback for [Databricks Free Edition](https://docs.databricks.com/getting-started/free-edition) and other free-tier workspaces. Uses the `workspace` catalog and sizes the demo for Free Edition limits.
 
 ### Free Edition limits
 
@@ -107,7 +107,7 @@ The app looks up the SQL warehouse id and the Lakebase endpoint host by name whe
 3. Delete what the setup job created:
    - the Lakebase project (*Lakebase* page, or `databricks postgres delete-project projects/<lakebase_project>`)
    - the schema: `DROP SCHEMA <catalog>.<schema> CASCADE`
-   - the SQL warehouse, if setup created it
+   - the SQL warehouse, only if setup created it (never the shared *Serverless Starter Warehouse*)
 
 ## Credits and disclaimer
 

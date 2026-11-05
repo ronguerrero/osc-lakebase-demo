@@ -14,7 +14,7 @@ variables:
     default: osc_demo
   warehouse_name:
     description: SQL warehouse the demos use; created (serverless, 2X-Small) if no warehouse has this name
-    default: osc-lakebase-demo-wh
+    default: Serverless Starter Warehouse
   lakebase_project:
     description: Lakebase Autoscaling project id (created by the setup job)
     default: osc-lakebase-demo
@@ -39,11 +39,10 @@ targets:
     variables:
       catalog: main   # <-- change to a catalog you can create schemas in
 
-  # Fallback for Databricks Free Edition: its only catalog and warehouse, and sized for its limits
+  # Fallback for Databricks Free Edition: its only catalog, and sized for its limits
   # (512 MB per Lakebase project, 3 Lakebase projects per workspace, which the main demo uses one of).
   free:
     variables:
       catalog: workspace
-      warehouse_name: Serverless Starter Warehouse
       olap_periods: "10"
       dab_max_deployments: "2"

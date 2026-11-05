@@ -24,7 +24,7 @@ dbutils.widgets.text("lakebase_project", "osc-lakebase-demo")
 dbutils.widgets.text("lakebase_db", "osc_demo")
 dbutils.widgets.text("app_name", "osc-lakebase-demo")
 dbutils.widgets.text("app_source_path", "")
-dbutils.widgets.text("warehouse_name", "osc-lakebase-demo-wh")
+dbutils.widgets.text("warehouse_name", "Serverless Starter Warehouse")
 dbutils.widgets.text("olap_periods", "50")
 dbutils.widgets.text("dab_max_deployments", "5")
 

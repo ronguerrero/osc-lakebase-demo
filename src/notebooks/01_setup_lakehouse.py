@@ -8,7 +8,7 @@
 
 dbutils.widgets.text("catalog", "workspace")
 dbutils.widgets.text("schema", "lakebase_demo")
-dbutils.widgets.text("warehouse_name", "osc-lakebase-demo-wh")
+dbutils.widgets.text("warehouse_name", "Serverless Starter Warehouse")
 
 catalog = dbutils.widgets.get("catalog")
 schema = dbutils.widgets.get("schema")
@@ -23,6 +23,8 @@ print(f"Setting up {catalog}.{schema}")
 # COMMAND ----------
 
 from databricks.sdk import WorkspaceClient
+from databricks.sdk.core import Config
+from databricks.sdk.errors import ResourceExhausted, TooManyRequests
 from databricks.sdk.service import sql
 
 w = WorkspaceClient()
@@ -41,15 +43,24 @@ for wh in w.warehouses.list():
 
 if not warehouse_id:
     print(f"Creating SQL warehouse: {warehouse_name}")
-    wh = w.warehouses.create(
-        name=warehouse_name,
-        cluster_size="Small",
-        max_num_clusters=1,
-        auto_stop_mins=10,
-        enable_photon=True,
-        enable_serverless_compute=True,
-        warehouse_type=sql.CreateWarehouseRequestWarehouseType.PRO,
-    ).result()
+    # Short retry window: a workspace at its warehouse limit answers 429, which the SDK would otherwise
+    # retry for 5 minutes and report as a timeout
+    w_create = WorkspaceClient(config=Config(retry_timeout_seconds=60))
+    try:
+        wh = w_create.warehouses.create(
+            name=warehouse_name,
+            cluster_size="2X-Small",  # some workspaces reject larger sizes; plenty for this dataset
+            max_num_clusters=1,
+            auto_stop_mins=10,
+            enable_photon=True,
+            enable_serverless_compute=True,
+            warehouse_type=sql.CreateWarehouseRequestWarehouseType.PRO,
+        ).result()
+    except (ResourceExhausted, TooManyRequests, TimeoutError) as e:
+        existing = [x.name for x in w.warehouses.list()]
+        raise RuntimeError(
+            f"Could not create SQL warehouse '{warehouse_name}' (the workspace may be at its warehouse limit): {e}. "
+            f"Set the bundle variable warehouse_name to an existing warehouse: {existing}") from e
     warehouse_id = wh.id
     print(f"Created warehouse: {warehouse_name} ({warehouse_id})")
 
